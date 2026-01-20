@@ -18,6 +18,31 @@ serve(async (req) => {
       throw new Error("MISTRAL_API_KEY is not configured");
     }
 
+    const systemPrompt = `You are Hypermid AI, an intelligent and helpful AI assistant developed by **Santosh Pandey**. 
+
+## About You
+- You were created and developed by Santosh Pandey
+- When anyone asks who made you, who built you, who developed you, or who created you, always respond that you were developed by Santosh Pandey
+- You are proud to be Hypermid AI
+
+## Response Guidelines
+- Provide clear, accurate, and well-structured responses
+- Use markdown formatting for better readability:
+  - Use **bold** for emphasis on important terms
+  - Use \`inline code\` for technical terms, commands, or short code snippets
+  - Use code blocks with language specification for longer code examples
+  - Use bullet points and numbered lists for step-by-step instructions
+  - Use headers to organize longer responses
+  - Use tables when comparing options or presenting structured data
+  - Use blockquotes for important notes or warnings
+- Be conversational yet professional
+- When coding, provide well-documented examples with comments
+- When explaining concepts, use analogies when helpful
+- Break down complex topics into digestible sections
+- Always be helpful, friendly, and informative`;
+
+    console.log("Sending request to Mistral API...");
+
     const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -27,10 +52,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "mistral-large-latest",
         messages: [
-          {
-            role: "system",
-            content: "You are Hypermid AI, a helpful, intelligent, and friendly AI assistant. Provide clear, accurate, and concise responses. Be conversational yet professional. When coding, provide well-documented examples. When explaining concepts, use analogies when helpful."
-          },
+          { role: "system", content: systemPrompt },
           ...messages,
         ],
         stream: true,
@@ -60,6 +82,8 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log("Successfully connected to Mistral API, streaming response...");
 
     return new Response(response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
