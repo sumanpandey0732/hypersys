@@ -63,18 +63,29 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ 
+        duration: 0.5, 
+        ease: [0.23, 1, 0.32, 1]
+      }}
       className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       {!isUser && (
-        <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/20">
+        <motion.div 
+          className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/20"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.1, duration: 0.3 }}
+        >
           <Sparkles className="w-5 h-5 text-primary" />
-        </div>
+        </motion.div>
       )}
       
-      <div
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
         className={`
           max-w-[85%] md:max-w-[75%] rounded-2xl px-5 py-4
           ${isUser 
@@ -86,7 +97,7 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
         {isUser ? (
           <p className="text-sm leading-relaxed">{content}</p>
         ) : (
-          <div className="prose prose-invert prose-sm max-w-none">
+          <div className="prose prose-invert prose-sm max-w-none transition-all duration-200">
             {content ? (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -190,19 +201,36 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
               </ReactMarkdown>
             ) : isStreaming ? (
               <div className="typing-indicator flex gap-1.5 py-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-primary/60" />
-                <span className="w-2.5 h-2.5 rounded-full bg-primary/60" />
-                <span className="w-2.5 h-2.5 rounded-full bg-primary/60" />
+                <motion.span 
+                  className="w-2.5 h-2.5 rounded-full bg-primary/60"
+                  animate={{ scale: [1, 1.2, 1], opacity: [0.6, 1, 0.6] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: 0 }}
+                />
+                <motion.span 
+                  className="w-2.5 h-2.5 rounded-full bg-primary/60"
+                  animate={{ scale: [1, 1.2, 1], opacity: [0.6, 1, 0.6] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
+                />
+                <motion.span 
+                  className="w-2.5 h-2.5 rounded-full bg-primary/60"
+                  animate={{ scale: [1, 1.2, 1], opacity: [0.6, 1, 0.6] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
+                />
               </div>
             ) : null}
           </div>
         )}
-      </div>
+      </motion.div>
 
       {isUser && (
-        <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-secondary to-secondary/50 flex items-center justify-center border border-border/50">
+        <motion.div 
+          className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-secondary to-secondary/50 flex items-center justify-center border border-border/50"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.1, duration: 0.3 }}
+        >
           <User className="w-5 h-5 text-foreground/70" />
-        </div>
+        </motion.div>
       )}
     </motion.div>
   );
