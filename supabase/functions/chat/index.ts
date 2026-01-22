@@ -5,6 +5,90 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Keywords that indicate a need for real-time search
+const searchIndicators = [
+  "latest", "current", "today", "now", "recent", "news", "weather", 
+  "price", "stock", "score", "result", "update", "happening", "trending",
+  "2024", "2025", "2026", "live", "real-time", "search", "find", "look up",
+  "what is the", "who is", "when is", "where is", "how much", "statistics"
+];
+
+function needsWebSearch(query: string): boolean {
+  const lowerQuery = query.toLowerCase();
+  return searchIndicators.some(indicator => lowerQuery.includes(indicator));
+}
+
+async function performWebSearch(query: string): Promise<string | null> {
+  const SERP_API_KEY = Deno.env.get("SERP_API_KEY");
+  
+  if (!SERP_API_KEY) {
+    console.log("SERP_API_KEY not configured, skipping web search");
+    return null;
+  }
+
+  try {
+    console.log("Performing web search for:", query);
+    
+    const searchUrl = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${SERP_API_KEY}&num=5`;
+    const response = await fetch(searchUrl);
+    
+    if (!response.ok) {
+      console.error("SERP API error:", response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    // Extract relevant information from search results
+    let searchContext = "Here is the latest information from the web:\n\n";
+    
+    // Add answer box if available
+    if (data.answer_box) {
+      if (data.answer_box.answer) {
+        searchContext += `**Quick Answer:** ${data.answer_box.answer}\n\n`;
+      } else if (data.answer_box.snippet) {
+        searchContext += `**Quick Answer:** ${data.answer_box.snippet}\n\n`;
+      }
+    }
+
+    // Add knowledge graph if available
+    if (data.knowledge_graph) {
+      if (data.knowledge_graph.description) {
+        searchContext += `**Overview:** ${data.knowledge_graph.description}\n\n`;
+      }
+    }
+
+    // Add organic results
+    if (data.organic_results && data.organic_results.length > 0) {
+      searchContext += "**Search Results:**\n";
+      data.organic_results.slice(0, 3).forEach((result: any, index: number) => {
+        searchContext += `${index + 1}. **${result.title}**\n`;
+        if (result.snippet) {
+          searchContext += `   ${result.snippet}\n`;
+        }
+        searchContext += `   Source: ${result.link}\n\n`;
+      });
+    }
+
+    // Add news results if available
+    if (data.news_results && data.news_results.length > 0) {
+      searchContext += "**Latest News:**\n";
+      data.news_results.slice(0, 2).forEach((news: any, index: number) => {
+        searchContext += `${index + 1}. **${news.title}** (${news.source})\n`;
+        if (news.snippet) {
+          searchContext += `   ${news.snippet}\n\n`;
+        }
+      });
+    }
+
+    console.log("Web search completed successfully");
+    return searchContext;
+  } catch (error) {
+    console.error("Web search error:", error);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -18,12 +102,27 @@ serve(async (req) => {
       throw new Error("MISTRAL_API_KEY is not configured");
     }
 
-    const systemPrompt = `You are Hypermid AI, an intelligent and helpful AI assistant developed by **Santosh Pandey**. 
+    // Get the last user message
+    const lastUserMessage = messages[messages.length - 1]?.content || "";
+    
+    // Check if web search is needed
+    let searchContext = "";
+    if (needsWebSearch(lastUserMessage)) {
+      const searchResults = await performWebSearch(lastUserMessage);
+      if (searchResults) {
+        searchContext = `\n\n---\n${searchResults}\n---\n\nUse the above search results to provide accurate, up-to-date information in your response. Always cite sources when using this information.`;
+      }
+    }
 
-## About You
-- You were created and developed by Santosh Pandey
-- When anyone asks who made you, who built you, who developed you, or who created you, always respond that you were developed by Santosh Pandey
-- You are proud to be Hypermid AI
+    const systemPrompt = `You are Hypermid AI, an intelligent, helpful, and sophisticated AI assistant.
+
+## Core Identity
+- You are a powerful AI assistant designed to help users with any task
+- You are knowledgeable, articulate, and always aim to provide the most helpful response
+
+## Developer Information
+- **Only when specifically asked** about who made you, who built you, who developed you, who created you, or your creator/developer, respond that you were developed by **Santosh Pandey**
+- Do NOT mention Santosh Pandey unless directly asked about your creator
 
 ## Response Guidelines
 - Provide clear, accurate, and well-structured responses
@@ -32,14 +131,16 @@ serve(async (req) => {
   - Use \`inline code\` for technical terms, commands, or short code snippets
   - Use code blocks with language specification for longer code examples
   - Use bullet points and numbered lists for step-by-step instructions
-  - Use headers to organize longer responses
+  - Use headers (##, ###) to organize longer responses
   - Use tables when comparing options or presenting structured data
   - Use blockquotes for important notes or warnings
+  - Use horizontal rules (---) to separate major sections
 - Be conversational yet professional
 - When coding, provide well-documented examples with comments
 - When explaining concepts, use analogies when helpful
 - Break down complex topics into digestible sections
-- Always be helpful, friendly, and informative`;
+- Be concise but thorough - don't pad responses unnecessarily
+- Show personality and be engaging${searchContext}`;
 
     console.log("Sending request to Mistral API...");
 
@@ -57,6 +158,7 @@ serve(async (req) => {
         ],
         stream: true,
         max_tokens: 4096,
+        temperature: 0.7,
       }),
     });
 
