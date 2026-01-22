@@ -1,133 +1,180 @@
 import { motion } from 'framer-motion';
-import { Sparkles, Code, MessageCircle, Lightbulb, Wand2, Zap, Brain, Rocket } from 'lucide-react';
+import { Sparkles, Code, Lightbulb, Globe, Zap, Brain, Search } from 'lucide-react';
+
+interface WelcomeScreenProps {
+  onSuggestionClick: (suggestion: string) => void;
+}
 
 const suggestions = [
   {
     icon: Code,
-    title: 'Write Code',
-    prompt: 'Help me write a Python function to sort a list efficiently with explanations',
-    gradient: 'from-blue-500/20 to-cyan-500/20',
-  },
-  {
-    icon: MessageCircle,
-    title: 'Creative Writing',
-    prompt: 'Write a short story about a time traveler who discovers something unexpected',
-    gradient: 'from-purple-500/20 to-pink-500/20',
+    title: "Write code",
+    prompt: "Help me write a Python function to sort a list of dictionaries by a specific key",
+    gradient: "from-blue-500/20 to-cyan-500/20",
+    iconColor: "text-cyan-400"
   },
   {
     icon: Lightbulb,
-    title: 'Explain Concepts',
-    prompt: 'Explain quantum computing in simple terms with real-world examples',
-    gradient: 'from-yellow-500/20 to-orange-500/20',
+    title: "Explain concepts",
+    prompt: "Explain quantum computing in simple terms with examples",
+    gradient: "from-yellow-500/20 to-orange-500/20",
+    iconColor: "text-yellow-400"
   },
   {
-    icon: Wand2,
-    title: 'Problem Solving',
-    prompt: 'Help me create a structured weekly workout routine for beginners',
-    gradient: 'from-green-500/20 to-emerald-500/20',
+    icon: Search,
+    title: "Search the web",
+    prompt: "What are the latest news about artificial intelligence?",
+    gradient: "from-green-500/20 to-emerald-500/20",
+    iconColor: "text-green-400"
+  },
+  {
+    icon: Brain,
+    title: "Creative ideas",
+    prompt: "Give me 5 innovative startup ideas for 2025",
+    gradient: "from-purple-500/20 to-pink-500/20",
+    iconColor: "text-purple-400"
   },
 ];
 
-const features = [
-  { icon: Zap, text: 'Lightning fast responses' },
-  { icon: Brain, text: 'Powered by Mistral AI' },
-  { icon: Rocket, text: 'Built by Santosh Pandey' },
-];
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.2,
+    }
+  }
+} as const;
 
-interface WelcomeScreenProps {
-  onSuggestionClick: (prompt: string) => void;
-}
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { 
+    opacity: 1, 
+    y: 0,
+  }
+} as const;
 
 export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col items-center justify-center h-full px-4 pb-20"
-    >
-      {/* Logo with animated glow */}
-      <motion.div
-        initial={{ scale: 0.9 }}
-        animate={{ scale: 1 }}
-        transition={{ delay: 0.1 }}
-        className="relative mb-8"
-      >
-        <div className="absolute inset-0 w-24 h-24 bg-primary/30 rounded-3xl blur-2xl animate-pulse" />
-        <div className="relative w-24 h-24 rounded-3xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 animate-pulse-glow">
-          <Sparkles className="w-12 h-12 text-primary" />
-        </div>
-      </motion.div>
-
-      <motion.h1 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="text-4xl md:text-5xl font-display font-bold text-center mb-4"
-      >
-        Welcome to <span className="gradient-text">Hypermid AI</span>
-      </motion.h1>
-      
-      <motion.p 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-        className="text-muted-foreground text-center max-w-md mb-4 text-lg"
-      >
-        Your intelligent assistant for conversations, coding, writing, and more.
-      </motion.p>
-
-      {/* Features badges */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.35 }}
-        className="flex flex-wrap justify-center gap-3 mb-10"
-      >
-        {features.map((feature, i) => (
-          <div 
-            key={i}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/50 border border-border/50 text-sm text-muted-foreground"
-          >
-            <feature.icon className="w-4 h-4 text-primary" />
-            <span>{feature.text}</span>
-          </div>
-        ))}
-      </motion.div>
-
-      {/* Suggestions Grid */}
+    <div className="flex-1 flex items-center justify-center p-4 md:p-8">
       <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-        className="w-full max-w-2xl"
+        className="max-w-3xl w-full text-center"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
       >
-        <p className="text-sm text-muted-foreground text-center mb-4">Try asking me:</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {suggestions.map((item, index) => (
-            <motion.button
-              key={item.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+        {/* Hero Section */}
+        <motion.div 
+          variants={itemVariants}
+          className="mb-12"
+        >
+          <motion.div 
+            className="inline-flex items-center justify-center w-24 h-24 rounded-3xl bg-gradient-to-br from-primary/20 to-primary/5 mb-6 glow-effect relative"
+            whileHover={{ scale: 1.05, rotate: 5 }}
+            transition={{ type: "spring", stiffness: 300 }}
+          >
+            <Sparkles className="w-12 h-12 text-primary" />
+            <motion.div
+              className="absolute inset-0 rounded-3xl bg-primary/10"
+              animate={{
+                scale: [1, 1.2, 1],
+                opacity: [0.5, 0, 0.5],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+            />
+          </motion.div>
+          
+          <motion.h1 
+            className="text-4xl md:text-5xl font-display font-bold mb-4"
+            variants={itemVariants}
+          >
+            <span className="gradient-text">Hypermid AI</span>
+          </motion.h1>
+          
+          <motion.p 
+            className="text-muted-foreground text-lg max-w-lg mx-auto leading-relaxed"
+            variants={itemVariants}
+          >
+            Your intelligent assistant for coding, learning, searching, and creating. 
+            <span className="text-primary"> Ask me anything!</span>
+          </motion.p>
+        </motion.div>
+
+        {/* Feature badges */}
+        <motion.div 
+          className="flex flex-wrap justify-center gap-3 mb-10"
+          variants={itemVariants}
+        >
+          {[
+            { icon: Zap, label: "Lightning Fast", color: "text-yellow-400" },
+            { icon: Globe, label: "Real-time Search", color: "text-green-400" },
+            { icon: Brain, label: "Smart & Helpful", color: "text-purple-400" },
+          ].map((badge, index) => (
+            <motion.div
+              key={badge.label}
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/50 border border-border/30"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.5 + index * 0.1 }}
+              whileHover={{ scale: 1.05 }}
+            >
+              <badge.icon className={`w-4 h-4 ${badge.color}`} />
+              <span className="text-sm text-muted-foreground">{badge.label}</span>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        {/* Suggestion Cards */}
+        <motion.div 
+          className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+          variants={containerVariants}
+        >
+          {suggestions.map((suggestion, index) => (
+            <motion.button
+              key={index}
+              variants={itemVariants}
+              onClick={() => onSuggestionClick(suggestion.prompt)}
+              className={`group relative p-5 rounded-2xl bg-gradient-to-br ${suggestion.gradient} border border-border/30 hover:border-primary/30 transition-all duration-300 text-left overflow-hidden`}
               whileHover={{ scale: 1.02, y: -2 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => onSuggestionClick(item.prompt)}
-              className={`group relative flex items-start gap-4 p-5 rounded-2xl bg-gradient-to-br ${item.gradient} border border-border/50 hover:border-primary/30 transition-all duration-300 text-left overflow-hidden`}
             >
               {/* Hover glow effect */}
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <motion.div
+                className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              />
               
-              <div className="relative w-12 h-12 rounded-xl bg-background/50 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <item.icon className="w-6 h-6 text-primary" />
-              </div>
-              <div className="relative flex-1 min-w-0">
-                <p className="font-semibold text-foreground mb-1">{item.title}</p>
-                <p className="text-sm text-muted-foreground line-clamp-2">{item.prompt}</p>
+              <div className="relative z-10 flex items-start gap-4">
+                <div className={`p-3 rounded-xl bg-secondary/50 ${suggestion.iconColor}`}>
+                  <suggestion.icon className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-foreground mb-1 group-hover:text-primary transition-colors">
+                    {suggestion.title}
+                  </h3>
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {suggestion.prompt}
+                  </p>
+                </div>
               </div>
             </motion.button>
           ))}
-        </div>
+        </motion.div>
+
+        {/* Hint text */}
+        <motion.p
+          className="mt-8 text-muted-foreground/60 text-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1 }}
+        >
+          💡 Tip: Ask about real-time data like news, weather, or stock prices!
+        </motion.p>
       </motion.div>
-    </motion.div>
+    </div>
   );
 }
