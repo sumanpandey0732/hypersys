@@ -1,0 +1,18 @@
+{
+  "name": "Hypermid AI",
+  "short_name": "Hypermid",
+  "description": "Intelligent AI assistant for coding, learning, and real-time web search",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1a",
+  "theme_color": "#14b8a6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["productivity", "utilities"]
+}

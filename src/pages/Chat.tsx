@@ -6,8 +6,9 @@ import ChatSidebar from '@/components/chat/ChatSidebar';
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
-import { Menu } from 'lucide-react';
+import { Menu, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Message {
   id: string;
@@ -95,15 +96,10 @@ export default function Chat() {
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-
-    // If the user is near the bottom, keep auto-scroll enabled. Otherwise, don't fight their scroll.
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     shouldAutoScrollRef.current = distanceFromBottom < 120;
   }, []);
 
-  // Smooth + stable auto-scroll:
-  // - only when user is already near the bottom
-  // - throttle to animation frames to avoid jitter while streaming chunks
   useEffect(() => {
     if (!shouldAutoScrollRef.current) return;
     if (rafScrollRef.current) cancelAnimationFrame(rafScrollRef.current);
@@ -150,7 +146,6 @@ export default function Chat() {
       console.error('Error saving message:', error);
     }
     
-    // Update conversation timestamp
     await supabase
       .from('conversations')
       .update({ updated_at: new Date().toISOString() })
@@ -163,18 +158,15 @@ export default function Chat() {
 
     let convId = activeConversationId;
     
-    // Create conversation if needed
     if (!convId) {
       convId = await createConversation(content);
       if (!convId) return;
     }
 
-    // Add user message
     const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content };
     setMessages(prev => [...prev, userMessage]);
     await saveMessage(convId, 'user', content);
 
-    // Prepare assistant message
     const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     setMessages(prev => [...prev, assistantMessage]);
     setIsLoading(true);
@@ -238,32 +230,26 @@ export default function Chat() {
         }
       }
 
-      // Save assistant response
       if (fullContent) {
         await saveMessage(convId, 'assistant', fullContent);
       }
       
-      // Reload conversations to update order
       loadConversations();
     } catch (error) {
       console.error('Chat error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to send message');
-      
-      // Remove failed assistant message
       setMessages(prev => prev.filter(m => m.id !== assistantMessage.id));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle new conversation
   const handleNewConversation = () => {
     setActiveConversationId(null);
     setMessages([]);
     setSidebarCollapsed(true);
   };
 
-  // Handle delete conversation
   const handleDeleteConversation = async (id: string) => {
     const { error } = await supabase.from('conversations').delete().eq('id', id);
     
@@ -281,14 +267,23 @@ export default function Chat() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-primary">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center animate-pulse">
+            <Sparkles className="w-8 h-8 text-primary" />
+          </div>
+          <p className="text-muted-foreground">Loading...</p>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex w-full bg-background">
+    <div className="min-h-screen min-h-[100dvh] flex w-full bg-background overflow-hidden">
       <ChatSidebar
         conversations={conversations}
         activeConversationId={activeConversationId}
@@ -303,59 +298,88 @@ export default function Chat() {
       />
 
       {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col min-h-screen relative">
+      <main className="flex-1 flex flex-col min-h-screen min-h-[100dvh] relative w-full">
         {/* Ambient background */}
-        <div className="pointer-events-none absolute inset-0">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-primary/5" />
-          <div className="absolute -top-24 left-1/3 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
-          <div className="absolute -bottom-24 right-1/4 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
+          <motion.div 
+            className="absolute -top-32 left-1/4 h-64 w-64 sm:h-80 sm:w-80 lg:h-96 lg:w-96 rounded-full bg-primary/10 blur-3xl"
+            animate={{ 
+              x: [0, 30, 0],
+              y: [0, -20, 0],
+            }}
+            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          />
+          <motion.div 
+            className="absolute -bottom-32 right-1/4 h-64 w-64 sm:h-80 sm:w-80 lg:h-96 lg:w-96 rounded-full bg-primary/5 blur-3xl"
+            animate={{ 
+              x: [0, -20, 0],
+              y: [0, 30, 0],
+            }}
+            transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+          />
         </div>
 
         {/* Header */}
-        <header className="h-16 border-b border-border/50 bg-background/80 backdrop-blur-xl flex items-center px-4 gap-4">
-          <button
+        <header className="h-14 sm:h-16 border-b border-border/50 bg-background/80 backdrop-blur-xl flex items-center px-3 sm:px-4 gap-3 sm:gap-4 relative z-20 flex-shrink-0">
+          <motion.button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-2 rounded-lg hover:bg-secondary transition-colors"
+            className="p-2 rounded-xl hover:bg-secondary active:scale-95 transition-all"
+            whileTap={{ scale: 0.95 }}
           >
             <Menu className="w-5 h-5" />
-          </button>
-          <h2 className="font-display font-semibold text-lg">
-            {activeConversationId 
-              ? conversations.find(c => c.id === activeConversationId)?.title || 'Chat'
-              : 'New Chat'
-            }
-          </h2>
+          </motion.button>
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="hidden sm:flex w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 items-center justify-center flex-shrink-0">
+              <Sparkles className="w-4 h-4 text-primary" />
+            </div>
+            <h2 className="font-display font-semibold text-base sm:text-lg truncate">
+              {activeConversationId 
+                ? conversations.find(c => c.id === activeConversationId)?.title || 'Chat'
+                : 'New Chat'
+              }
+            </h2>
+          </div>
         </header>
 
         {/* Messages Area */}
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin"
+          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin overscroll-contain"
         >
-          {messages.length === 0 ? (
-            <WelcomeScreen onSuggestionClick={handleSendMessage} />
-          ) : (
-            <div className="max-w-4xl mx-auto p-4 space-y-6">
-              {messages.map((msg) => (
-                <ChatMessage
-                  key={msg.id}
-                  role={msg.role}
-                  content={msg.content}
-                  isStreaming={isLoading && msg.role === 'assistant' && !msg.content}
-                />
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {messages.length === 0 ? (
+              <WelcomeScreen key="welcome" onSuggestionClick={handleSendMessage} />
+            ) : (
+              <motion.div 
+                key="messages"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6"
+              >
+                {messages.map((msg) => (
+                  <ChatMessage
+                    key={msg.id}
+                    role={msg.role}
+                    content={msg.content}
+                    isStreaming={isLoading && msg.role === 'assistant' && !msg.content}
+                  />
+                ))}
+                <div ref={messagesEndRef} className="h-1" />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Input Area */}
-        <ChatInput
-          onSend={handleSendMessage}
-          isLoading={isLoading}
-          disabled={!user}
-        />
+        <div className="relative z-20 flex-shrink-0">
+          <ChatInput
+            onSend={handleSendMessage}
+            isLoading={isLoading}
+            disabled={!user}
+          />
+        </div>
       </main>
     </div>
   );
