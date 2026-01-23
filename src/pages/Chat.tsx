@@ -30,7 +30,10 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const rafScrollRef = useRef<number | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -89,10 +92,30 @@ export default function Chat() {
     loadMessages();
   }, [loadMessages]);
 
-  // Scroll to bottom
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    // If the user is near the bottom, keep auto-scroll enabled. Otherwise, don't fight their scroll.
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom < 120;
+  }, []);
+
+  // Smooth + stable auto-scroll:
+  // - only when user is already near the bottom
+  // - throttle to animation frames to avoid jitter while streaming chunks
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (!shouldAutoScrollRef.current) return;
+    if (rafScrollRef.current) cancelAnimationFrame(rafScrollRef.current);
+
+    rafScrollRef.current = requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: isLoading ? 'auto' : 'smooth', block: 'end' });
+    });
+
+    return () => {
+      if (rafScrollRef.current) cancelAnimationFrame(rafScrollRef.current);
+    };
+  }, [messages, isLoading]);
 
   // Create new conversation
   const createConversation = async (firstMessage: string): Promise<string | null> => {
@@ -281,6 +304,13 @@ export default function Chat() {
 
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col min-h-screen relative">
+        {/* Ambient background */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-primary/5" />
+          <div className="absolute -top-24 left-1/3 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute -bottom-24 right-1/4 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
+        </div>
+
         {/* Header */}
         <header className="h-16 border-b border-border/50 bg-background/80 backdrop-blur-xl flex items-center px-4 gap-4">
           <button
@@ -298,7 +328,11 @@ export default function Chat() {
         </header>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin"
+        >
           {messages.length === 0 ? (
             <WelcomeScreen onSuggestionClick={handleSendMessage} />
           ) : (
