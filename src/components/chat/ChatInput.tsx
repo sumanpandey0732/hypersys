@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Send, Loader2, Sparkles } from 'lucide-react';
+import { Send, Loader2, Sparkles, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface ChatInputProps {
@@ -11,6 +11,7 @@ interface ChatInputProps {
 
 export default function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
   const [message, setMessage] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -39,52 +40,71 @@ export default function ChatInput({ onSend, isLoading, disabled }: ChatInputProp
   };
 
   return (
-    <div className="p-3 sm:p-4 border-t border-border/50 bg-background/90 backdrop-blur-xl safe-area-inset-bottom">
+    <div className="p-3 sm:p-4 lg:p-5 bg-gradient-to-t from-background via-background to-transparent safe-area-inset-bottom">
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
         <motion.div
           initial={false}
           animate={{ 
-            scale: message.trim() ? 1.005 : 1,
-            boxShadow: message.trim() 
-              ? '0 0 30px hsla(172, 66%, 50%, 0.15)' 
-              : '0 0 0px transparent'
+            scale: isFocused ? 1.01 : 1,
+            boxShadow: isFocused 
+              ? '0 0 0 1px hsla(172, 66%, 50%, 0.3), 0 8px 40px -12px hsla(172, 66%, 50%, 0.25)' 
+              : '0 0 0 1px hsla(var(--border), 0.5), 0 4px 20px -8px hsla(0, 0%, 0%, 0.3)'
           }}
-          className="relative flex items-end gap-2 sm:gap-3 bg-secondary/50 rounded-xl sm:rounded-2xl border border-border/50 p-1.5 sm:p-2 transition-all duration-300 focus-within:border-primary/40 focus-within:bg-secondary/70"
+          transition={{ duration: 0.2 }}
+          className="relative flex items-end gap-2 sm:gap-3 bg-secondary/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl border border-border/50 p-2 sm:p-3"
         >
           {/* AI indicator */}
-          <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-transparent">
-            <Sparkles className="w-4 h-4 text-primary/60" />
+          <motion.div 
+            className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/10 flex-shrink-0"
+            animate={isLoading ? { 
+              scale: [1, 1.1, 1],
+              opacity: [1, 0.7, 1]
+            } : {}}
+            transition={{ duration: 1.5, repeat: isLoading ? Infinity : 0 }}
+          >
+            <Sparkles className={`w-5 h-5 ${isLoading ? 'text-primary animate-pulse' : 'text-primary/60'}`} />
+          </motion.div>
+          
+          <div className="flex-1 relative">
+            <textarea
+              ref={textareaRef}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder="Ask Hypermid anything..."
+              disabled={disabled}
+              rows={1}
+              aria-label="Message input"
+              className="w-full bg-transparent border-0 resize-none focus:outline-none focus:ring-0 text-foreground placeholder:text-muted-foreground/60 py-3 px-1 sm:px-2 max-h-[160px] scrollbar-thin text-sm sm:text-base leading-relaxed"
+            />
           </div>
           
-          <textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask Hypermid anything..."
-            disabled={disabled}
-            rows={1}
-            aria-label="Message input"
-            className="flex-1 bg-transparent border-0 resize-none focus:outline-none focus:ring-0 text-foreground placeholder:text-muted-foreground py-2.5 sm:py-3 px-2 sm:px-3 max-h-[160px] scrollbar-thin text-sm sm:text-base leading-relaxed"
-          />
-          
-          <Button
-            type="submit"
-            disabled={!message.trim() || isLoading || disabled}
-            aria-label={isLoading ? "Sending message..." : "Send message"}
-            className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-primary/20"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4 sm:w-5 sm:h-5" />
-            )}
-          </Button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              type="submit"
+              disabled={!message.trim() || isLoading || disabled}
+              aria-label={isLoading ? "Sending message..." : "Send message"}
+              className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-primary hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-primary/25 border border-primary/50"
+            >
+              {isLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+            </Button>
+          </div>
         </motion.div>
         
-        <p className="text-[10px] sm:text-xs text-muted-foreground/60 text-center mt-2 sm:mt-3 px-2">
-          Hypermid AI can make mistakes. Verify important information.
-        </p>
+        <motion.p 
+          className="text-[10px] sm:text-xs text-muted-foreground/50 text-center mt-3 px-2"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+        >
+          Hypermid AI is powered by advanced language models • Press Enter to send
+        </motion.p>
       </form>
     </div>
   );
