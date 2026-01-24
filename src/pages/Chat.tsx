@@ -6,7 +6,7 @@ import ChatSidebar from '@/components/chat/ChatSidebar';
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
-import { Menu, Sparkles } from 'lucide-react';
+import { Menu, Sparkles, ArrowDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -31,12 +31,13 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
-  const rafScrollRef = useRef<number | null>(null);
-  const isProgrammaticScrollRef = useRef(false);
-  const lastScrollTopRef = useRef(0);
+  const isUserScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -89,62 +90,63 @@ export default function Chat() {
         content: m.content,
       })) || []
     );
+    
+    // Reset auto-scroll when loading a conversation
+    shouldAutoScrollRef.current = true;
   }, [activeConversationId]);
 
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
 
+  // Scroll to bottom helper
+  const scrollToBottom = useCallback((instant = false) => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    
+    const targetTop = el.scrollHeight;
+    
+    if (instant) {
+      el.scrollTop = targetTop;
+    } else {
+      el.scrollTo({ top: targetTop, behavior: 'smooth' });
+    }
+  }, []);
+
+  // Handle user scroll - detect if they scroll away from bottom
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    if (isProgrammaticScrollRef.current) return;
-
-    // If user scrolls up (or away from bottom), disable auto-scroll.
-    // If they come back near the bottom, re-enable.
+    
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const isNearBottom = distanceFromBottom < 140;
-
-    // Store last scrollTop to help avoid oscillation caused by tiny layout changes.
-    lastScrollTopRef.current = el.scrollTop;
+    const isNearBottom = distanceFromBottom < 100;
+    
+    // Show/hide scroll button
+    setShowScrollButton(distanceFromBottom > 300);
+    
+    // Track if user is scrolling manually
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    isUserScrollingRef.current = true;
+    scrollTimeoutRef.current = setTimeout(() => {
+      isUserScrollingRef.current = false;
+    }, 150);
+    
+    // Update auto-scroll preference
     shouldAutoScrollRef.current = isNearBottom;
   }, []);
 
-  const scrollToBottom = useCallback(
-    (behavior: ScrollBehavior) => {
-      const el = scrollContainerRef.current;
-      if (!el) return;
-      if (!shouldAutoScrollRef.current) return;
-
-      if (rafScrollRef.current) cancelAnimationFrame(rafScrollRef.current);
-      rafScrollRef.current = requestAnimationFrame(() => {
-        isProgrammaticScrollRef.current = true;
-        const top = el.scrollHeight + 1000;
-
-        // During streaming, avoid smooth scroll (it can look like bouncing/jitter).
-        if (behavior === 'auto') {
-          el.scrollTop = top;
-        } else {
-          el.scrollTo({ top, behavior: 'smooth' });
-        }
-
-        // Allow user scroll events again.
-        window.setTimeout(() => {
-          isProgrammaticScrollRef.current = false;
-        }, 80);
-      });
-    },
-    []
-  );
-
+  // Auto-scroll on new messages (only if near bottom and not user scrolling)
   useEffect(() => {
-    // Coalesce frequent message updates (streaming deltas) into a single rAF scroll.
-    // This prevents the "up/down" oscillation and keeps user scrolling respected.
-    scrollToBottom(isLoading ? 'auto' : 'smooth');
-
-    return () => {
-      if (rafScrollRef.current) cancelAnimationFrame(rafScrollRef.current);
-    };
+    if (!shouldAutoScrollRef.current || isUserScrollingRef.current) return;
+    
+    // Use instant scroll during streaming for smooth follow
+    const timer = setTimeout(() => {
+      scrollToBottom(isLoading);
+    }, 50);
+    
+    return () => clearTimeout(timer);
   }, [messages, isLoading, scrollToBottom]);
 
   // Create new conversation
@@ -189,6 +191,9 @@ export default function Chat() {
   // Handle sending message
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
+
+    // Enable auto-scroll when user sends a message
+    shouldAutoScrollRef.current = true;
 
     let convId = activeConversationId;
     
@@ -299,6 +304,11 @@ export default function Chat() {
     }
   };
 
+  const handleScrollToBottom = () => {
+    shouldAutoScrollRef.current = true;
+    scrollToBottom(false);
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -307,10 +317,26 @@ export default function Chat() {
           animate={{ opacity: 1, scale: 1 }}
           className="flex flex-col items-center gap-4"
         >
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center animate-pulse">
-            <Sparkles className="w-8 h-8 text-primary" />
-          </div>
-          <p className="text-muted-foreground">Loading...</p>
+          <motion.div 
+            className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary/30 to-primary/5 flex items-center justify-center relative"
+            animate={{ 
+              boxShadow: [
+                '0 0 20px hsla(172, 66%, 50%, 0.2)',
+                '0 0 60px hsla(172, 66%, 50%, 0.4)',
+                '0 0 20px hsla(172, 66%, 50%, 0.2)',
+              ]
+            }}
+            transition={{ duration: 2, repeat: Infinity }}
+          >
+            <Sparkles className="w-10 h-10 text-primary" />
+          </motion.div>
+          <motion.p 
+            className="text-muted-foreground font-medium"
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 1.5, repeat: Infinity }}
+          >
+            Loading Hypermid AI...
+          </motion.p>
         </motion.div>
       </div>
     );
@@ -337,42 +363,68 @@ export default function Chat() {
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-primary/5" />
           <motion.div 
-            className="absolute -top-32 left-1/4 h-64 w-64 sm:h-80 sm:w-80 lg:h-96 lg:w-96 rounded-full bg-primary/10 blur-3xl"
+            className="absolute -top-40 left-1/4 h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-primary/8 blur-[100px]"
             animate={{ 
-              x: [0, 30, 0],
-              y: [0, -20, 0],
+              x: [0, 50, 0],
+              y: [0, -30, 0],
+              scale: [1, 1.1, 1],
             }}
-            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
           />
           <motion.div 
-            className="absolute -bottom-32 right-1/4 h-64 w-64 sm:h-80 sm:w-80 lg:h-96 lg:w-96 rounded-full bg-primary/5 blur-3xl"
+            className="absolute -bottom-40 right-1/4 h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-accent/5 blur-[100px]"
             animate={{ 
-              x: [0, -20, 0],
-              y: [0, 30, 0],
+              x: [0, -30, 0],
+              y: [0, 40, 0],
+              scale: [1, 1.15, 1],
             }}
-            transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+            transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div 
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-primary/3 blur-[150px]"
+            animate={{ 
+              scale: [1, 1.2, 1],
+              opacity: [0.3, 0.5, 0.3],
+            }}
+            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
           />
         </div>
 
         {/* Header */}
-        <header className="h-14 sm:h-16 border-b border-border/50 bg-background/80 backdrop-blur-xl flex items-center px-3 sm:px-4 gap-3 sm:gap-4 relative z-20 flex-shrink-0">
+        <header className="h-14 sm:h-16 border-b border-border/40 bg-background/70 backdrop-blur-2xl flex items-center px-3 sm:px-4 gap-3 sm:gap-4 relative z-20 flex-shrink-0">
           <motion.button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-2 rounded-xl hover:bg-secondary active:scale-95 transition-all"
+            className="p-2.5 rounded-xl bg-secondary/50 hover:bg-secondary border border-border/30 transition-all duration-200"
+            whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-5 h-5 text-foreground/80" />
           </motion.button>
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <div className="hidden sm:flex w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 items-center justify-center flex-shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <motion.div 
+              className="hidden sm:flex w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 items-center justify-center flex-shrink-0 border border-primary/20"
+              whileHover={{ scale: 1.1, rotate: 5 }}
+            >
               <Sparkles className="w-4 h-4 text-primary" />
+            </motion.div>
+            <div className="min-w-0">
+              <h1 className="font-display font-semibold text-base sm:text-lg truncate text-foreground">
+                {activeConversationId 
+                  ? conversations.find(c => c.id === activeConversationId)?.title || 'Chat'
+                  : 'New Chat'
+                }
+              </h1>
+              {isLoading && (
+                <motion.p 
+                  className="text-xs text-primary flex items-center gap-1.5"
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                  AI is thinking...
+                </motion.p>
+              )}
             </div>
-            <h2 className="font-display font-semibold text-base sm:text-lg truncate">
-              {activeConversationId 
-                ? conversations.find(c => c.id === activeConversationId)?.title || 'Chat'
-                : 'New Chat'
-              }
-            </h2>
           </div>
         </header>
 
@@ -380,7 +432,8 @@ export default function Chat() {
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin overscroll-contain overflow-anchor-none"
+          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin scroll-smooth"
+          style={{ overscrollBehavior: 'contain' }}
         >
           <AnimatePresence mode="wait">
             {messages.length === 0 ? (
@@ -390,9 +443,9 @@ export default function Chat() {
                 key="messages"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6"
+                className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-3 sm:space-y-4"
               >
-                {messages.map((msg) => (
+                {messages.map((msg, index) => (
                   <ChatMessage
                     key={msg.id}
                     role={msg.role}
@@ -400,8 +453,25 @@ export default function Chat() {
                     isStreaming={isLoading && msg.role === 'assistant' && !msg.content}
                   />
                 ))}
-                <div ref={messagesEndRef} className="h-1" />
+                <div ref={messagesEndRef} className="h-4" />
               </motion.div>
+            )}
+          </AnimatePresence>
+          
+          {/* Scroll to bottom button */}
+          <AnimatePresence>
+            {showScrollButton && messages.length > 0 && (
+              <motion.button
+                initial={{ opacity: 0, y: 20, scale: 0.8 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 20, scale: 0.8 }}
+                onClick={handleScrollToBottom}
+                className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 p-3 rounded-full bg-primary/90 hover:bg-primary text-primary-foreground shadow-lg shadow-primary/30 backdrop-blur-sm border border-primary/50 transition-all duration-200"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+              >
+                <ArrowDown className="w-5 h-5" />
+              </motion.button>
             )}
           </AnimatePresence>
         </div>

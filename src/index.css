@@ -110,11 +110,11 @@
   }
 
   .message-user {
-    @apply bg-primary/10 border border-primary/20;
+    @apply bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/25;
   }
 
   .message-assistant {
-    @apply bg-secondary/50 border border-border/30;
+    @apply bg-gradient-to-br from-secondary/80 to-secondary/40 border border-border/40;
   }
 
   .sidebar-item {
@@ -130,11 +130,11 @@
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--border)) transparent;
+    scrollbar-color: hsl(var(--border) / 0.5) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
+    width: 5px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -142,13 +142,28 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--border));
-    border-radius: 3px;
+    background-color: hsl(var(--border) / 0.6);
+    border-radius: 10px;
+    transition: background-color 0.2s;
   }
 
-  /* Prevent browser scroll anchoring from causing "jumping" while streaming content grows */
-  .overflow-anchor-none {
-    overflow-anchor: none;
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--primary) / 0.5);
+  }
+
+  /* Smooth scrolling */
+  .scroll-smooth {
+    scroll-behavior: smooth;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hidden {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
   }
 
   .animate-pulse-glow {
@@ -185,5 +200,40 @@
       transform: translateY(-4px);
       opacity: 1;
     }
+  }
+
+  /* Floating animation */
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  /* Shimmer effect */
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsla(172, 66%, 50%, 0.1),
+      transparent
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
   }
 }
