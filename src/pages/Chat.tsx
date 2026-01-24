@@ -35,6 +35,8 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const rafScrollRef = useRef<number | null>(null);
+  const isProgrammaticScrollRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -96,22 +98,54 @@ export default function Chat() {
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
+    if (isProgrammaticScrollRef.current) return;
+
+    // If user scrolls up (or away from bottom), disable auto-scroll.
+    // If they come back near the bottom, re-enable.
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    shouldAutoScrollRef.current = distanceFromBottom < 120;
+    const isNearBottom = distanceFromBottom < 140;
+
+    // Store last scrollTop to help avoid oscillation caused by tiny layout changes.
+    lastScrollTopRef.current = el.scrollTop;
+    shouldAutoScrollRef.current = isNearBottom;
   }, []);
 
-  useEffect(() => {
-    if (!shouldAutoScrollRef.current) return;
-    if (rafScrollRef.current) cancelAnimationFrame(rafScrollRef.current);
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior) => {
+      const el = scrollContainerRef.current;
+      if (!el) return;
+      if (!shouldAutoScrollRef.current) return;
 
-    rafScrollRef.current = requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: isLoading ? 'auto' : 'smooth', block: 'end' });
-    });
+      if (rafScrollRef.current) cancelAnimationFrame(rafScrollRef.current);
+      rafScrollRef.current = requestAnimationFrame(() => {
+        isProgrammaticScrollRef.current = true;
+        const top = el.scrollHeight + 1000;
+
+        // During streaming, avoid smooth scroll (it can look like bouncing/jitter).
+        if (behavior === 'auto') {
+          el.scrollTop = top;
+        } else {
+          el.scrollTo({ top, behavior: 'smooth' });
+        }
+
+        // Allow user scroll events again.
+        window.setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, 80);
+      });
+    },
+    []
+  );
+
+  useEffect(() => {
+    // Coalesce frequent message updates (streaming deltas) into a single rAF scroll.
+    // This prevents the "up/down" oscillation and keeps user scrolling respected.
+    scrollToBottom(isLoading ? 'auto' : 'smooth');
 
     return () => {
       if (rafScrollRef.current) cancelAnimationFrame(rafScrollRef.current);
     };
-  }, [messages, isLoading]);
+  }, [messages, isLoading, scrollToBottom]);
 
   // Create new conversation
   const createConversation = async (firstMessage: string): Promise<string | null> => {
@@ -346,7 +380,7 @@ export default function Chat() {
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin overscroll-contain"
+          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin overscroll-contain overflow-anchor-none"
         >
           <AnimatePresence mode="wait">
             {messages.length === 0 ? (
