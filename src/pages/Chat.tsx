@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import ChatSidebar from '@/components/chat/ChatSidebar';
@@ -24,27 +23,22 @@ interface Conversation {
 }
 
 export default function Chat() {
-  const { user, loading: authLoading } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  
+
+  // Scroll refs
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Scroll state
   const shouldAutoScrollRef = useRef(true);
-  const isUserScrollingRef = useRef(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-    }
-  }, [user, authLoading, navigate]);
+  const isProgrammaticScrollRef = useRef(false);
+  const scrollRafRef = useRef<number | null>(null);
 
   // Load conversations
   const loadConversations = useCallback(async () => {
@@ -53,7 +47,7 @@ export default function Chat() {
       .from('conversations')
       .select('*')
       .order('updated_at', { ascending: false });
-    
+
     if (error) {
       console.error('Error loading conversations:', error);
       return;
@@ -71,18 +65,18 @@ export default function Chat() {
       setMessages([]);
       return;
     }
-    
+
     const { data, error } = await supabase
       .from('messages')
       .select('*')
       .eq('conversation_id', activeConversationId)
       .order('created_at', { ascending: true });
-    
+
     if (error) {
       console.error('Error loading messages:', error);
       return;
     }
-    
+
     setMessages(
       data?.map((m) => ({
         id: m.id,
@@ -90,84 +84,91 @@ export default function Chat() {
         content: m.content,
       })) || []
     );
-    
-    // Reset auto-scroll when loading a conversation
+
+    // Reset scroll state when loading conversation
     shouldAutoScrollRef.current = true;
+    requestAnimationFrame(() => {
+      scrollToBottom(true);
+    });
   }, [activeConversationId]);
 
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
 
-  // Scroll to bottom helper
+  // Scroll to bottom helper - ChatGPT style
   const scrollToBottom = useCallback((instant = false) => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    
-    const targetTop = el.scrollHeight;
-    
-    if (instant) {
-      el.scrollTop = targetTop;
-    } else {
-      el.scrollTo({ top: targetTop, behavior: 'smooth' });
+    if (!shouldAutoScrollRef.current) return;
+
+    if (scrollRafRef.current) {
+      cancelAnimationFrame(scrollRafRef.current);
     }
+
+    scrollRafRef.current = requestAnimationFrame(() => {
+      isProgrammaticScrollRef.current = true;
+      const targetTop = el.scrollHeight;
+
+      if (instant) {
+        el.scrollTop = targetTop;
+      } else {
+        el.scrollTo({ top: targetTop, behavior: 'smooth' });
+      }
+
+      // Allow user scroll detection again after a short delay
+      setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 100);
+    });
   }, []);
 
   // Handle user scroll - detect if they scroll away from bottom
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    
+
+    // Ignore programmatic scrolls
+    if (isProgrammaticScrollRef.current) return;
+
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const isNearBottom = distanceFromBottom < 100;
-    
+    const isNearBottom = distanceFromBottom < 120;
+
     // Show/hide scroll button
-    setShowScrollButton(distanceFromBottom > 300);
-    
-    // Track if user is scrolling manually
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    isUserScrollingRef.current = true;
-    scrollTimeoutRef.current = setTimeout(() => {
-      isUserScrollingRef.current = false;
-    }, 150);
-    
-    // Update auto-scroll preference
+    setShowScrollButton(distanceFromBottom > 200);
+
+    // Update auto-scroll preference based on user position
     shouldAutoScrollRef.current = isNearBottom;
   }, []);
 
-  // Auto-scroll on new messages (only if near bottom and not user scrolling)
+  // Auto-scroll on new messages (ChatGPT behavior)
   useEffect(() => {
-    if (!shouldAutoScrollRef.current || isUserScrollingRef.current) return;
-    
-    // Use instant scroll during streaming for smooth follow
-    const timer = setTimeout(() => {
+    // Only scroll if user is near bottom
+    if (shouldAutoScrollRef.current) {
+      // Use instant scroll during streaming for smooth follow, smooth after
       scrollToBottom(isLoading);
-    }, 50);
-    
-    return () => clearTimeout(timer);
+    }
   }, [messages, isLoading, scrollToBottom]);
 
   // Create new conversation
   const createConversation = async (firstMessage: string): Promise<string | null> => {
     if (!user) return null;
-    
+
     const title = firstMessage.slice(0, 50) + (firstMessage.length > 50 ? '...' : '');
-    
+
     const { data, error } = await supabase
       .from('conversations')
       .insert({ user_id: user.id, title })
       .select()
       .single();
-    
+
     if (error) {
       console.error('Error creating conversation:', error);
       toast.error('Failed to create conversation');
       return null;
     }
-    
-    setConversations(prev => [data, ...prev]);
+
+    setConversations((prev) => [data, ...prev]);
     setActiveConversationId(data.id);
     return data.id;
   };
@@ -177,11 +178,11 @@ export default function Chat() {
     const { error } = await supabase
       .from('messages')
       .insert({ conversation_id: conversationId, role, content });
-    
+
     if (error) {
       console.error('Error saving message:', error);
     }
-    
+
     await supabase
       .from('conversations')
       .update({ updated_at: new Date().toISOString() })
@@ -196,18 +197,18 @@ export default function Chat() {
     shouldAutoScrollRef.current = true;
 
     let convId = activeConversationId;
-    
+
     if (!convId) {
       convId = await createConversation(content);
       if (!convId) return;
     }
 
     const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content };
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     await saveMessage(convId, 'user', content);
 
     const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-    setMessages(prev => [...prev, assistantMessage]);
+    setMessages((prev) => [...prev, assistantMessage]);
     setIsLoading(true);
 
     try {
@@ -215,10 +216,10 @@ export default function Chat() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage].map(m => ({ role: m.role, content: m.content })),
+          messages: [...messages, userMessage].map((m) => ({ role: m.role, content: m.content })),
         }),
       });
 
@@ -237,9 +238,9 @@ export default function Chat() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         textBuffer += decoder.decode(value, { stream: true });
-        
+
         let newlineIndex: number;
         while ((newlineIndex = textBuffer.indexOf('\n')) !== -1) {
           let line = textBuffer.slice(0, newlineIndex);
@@ -257,8 +258,8 @@ export default function Chat() {
             const delta = parsed.choices?.[0]?.delta?.content;
             if (delta) {
               fullContent += delta;
-              setMessages(prev =>
-                prev.map(m =>
+              setMessages((prev) =>
+                prev.map((m) =>
                   m.id === assistantMessage.id ? { ...m, content: fullContent } : m
                 )
               );
@@ -272,12 +273,12 @@ export default function Chat() {
       if (fullContent) {
         await saveMessage(convId, 'assistant', fullContent);
       }
-      
+
       loadConversations();
     } catch (error) {
       console.error('Chat error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to send message');
-      setMessages(prev => prev.filter(m => m.id !== assistantMessage.id));
+      setMessages((prev) => prev.filter((m) => m.id !== assistantMessage.id));
     } finally {
       setIsLoading(false);
     }
@@ -291,13 +292,13 @@ export default function Chat() {
 
   const handleDeleteConversation = async (id: string) => {
     const { error } = await supabase.from('conversations').delete().eq('id', id);
-    
+
     if (error) {
       toast.error('Failed to delete conversation');
       return;
     }
-    
-    setConversations(prev => prev.filter(c => c.id !== id));
+
+    setConversations((prev) => prev.filter((c) => c.id !== id));
     if (activeConversationId === id) {
       setActiveConversationId(null);
       setMessages([]);
@@ -306,41 +307,12 @@ export default function Chat() {
 
   const handleScrollToBottom = () => {
     shouldAutoScrollRef.current = true;
-    scrollToBottom(false);
+    setShowScrollButton(false);
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
   };
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="flex flex-col items-center gap-4"
-        >
-          <motion.div 
-            className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary/30 to-primary/5 flex items-center justify-center relative"
-            animate={{ 
-              boxShadow: [
-                '0 0 20px hsla(172, 66%, 50%, 0.2)',
-                '0 0 60px hsla(172, 66%, 50%, 0.4)',
-                '0 0 20px hsla(172, 66%, 50%, 0.2)',
-              ]
-            }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            <Sparkles className="w-10 h-10 text-primary" />
-          </motion.div>
-          <motion.p 
-            className="text-muted-foreground font-medium"
-            animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-          >
-            Loading Hypermid AI...
-          </motion.p>
-        </motion.div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen min-h-[100dvh] flex w-full bg-background overflow-hidden">
@@ -362,46 +334,47 @@ export default function Chat() {
         {/* Ambient background */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-primary/5" />
-          <motion.div 
-            className="absolute -top-40 left-1/4 h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-primary/8 blur-[100px]"
-            animate={{ 
+          <motion.div
+            className="absolute -top-40 left-1/4 h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-primary/10 blur-[100px]"
+            animate={{
               x: [0, 50, 0],
               y: [0, -30, 0],
               scale: [1, 1.1, 1],
             }}
-            transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
           />
-          <motion.div 
-            className="absolute -bottom-40 right-1/4 h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-accent/5 blur-[100px]"
-            animate={{ 
+          <motion.div
+            className="absolute -bottom-40 right-1/4 h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-accent/8 blur-[100px]"
+            animate={{
               x: [0, -30, 0],
               y: [0, 40, 0],
               scale: [1, 1.15, 1],
             }}
-            transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut' }}
           />
-          <motion.div 
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-primary/3 blur-[150px]"
-            animate={{ 
+          <motion.div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-primary/5 blur-[150px]"
+            animate={{
               scale: [1, 1.2, 1],
               opacity: [0.3, 0.5, 0.3],
             }}
-            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
           />
         </div>
 
         {/* Header */}
-        <header className="h-14 sm:h-16 border-b border-border/40 bg-background/70 backdrop-blur-2xl flex items-center px-3 sm:px-4 gap-3 sm:gap-4 relative z-20 flex-shrink-0">
+        <header className="h-14 sm:h-16 border-b border-border/40 bg-background/80 backdrop-blur-2xl flex items-center px-3 sm:px-4 gap-3 sm:gap-4 relative z-20 flex-shrink-0">
           <motion.button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-2.5 rounded-xl bg-secondary/50 hover:bg-secondary border border-border/30 transition-all duration-200"
+            className="p-2.5 rounded-xl bg-secondary/60 hover:bg-secondary border border-border/40 transition-all duration-200"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
+            aria-label="Toggle sidebar"
           >
             <Menu className="w-5 h-5 text-foreground/80" />
           </motion.button>
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <motion.div 
+            <motion.div
               className="hidden sm:flex w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 items-center justify-center flex-shrink-0 border border-primary/20"
               whileHover={{ scale: 1.1, rotate: 5 }}
             >
@@ -409,13 +382,12 @@ export default function Chat() {
             </motion.div>
             <div className="min-w-0">
               <h1 className="font-display font-semibold text-base sm:text-lg truncate text-foreground">
-                {activeConversationId 
-                  ? conversations.find(c => c.id === activeConversationId)?.title || 'Chat'
-                  : 'New Chat'
-                }
+                {activeConversationId
+                  ? conversations.find((c) => c.id === activeConversationId)?.title || 'Chat'
+                  : 'New Chat'}
               </h1>
               {isLoading && (
-                <motion.p 
+                <motion.p
                   className="text-xs text-primary flex items-center gap-1.5"
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -432,20 +404,20 @@ export default function Chat() {
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin scroll-smooth"
-          style={{ overscrollBehavior: 'contain' }}
+          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin"
+          style={{ overscrollBehavior: 'contain', overflowAnchor: 'none' }}
         >
           <AnimatePresence mode="wait">
             {messages.length === 0 ? (
               <WelcomeScreen key="welcome" onSuggestionClick={handleSendMessage} />
             ) : (
-              <motion.div 
+              <motion.div
                 key="messages"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-3 sm:space-y-4"
               >
-                {messages.map((msg, index) => (
+                {messages.map((msg) => (
                   <ChatMessage
                     key={msg.id}
                     role={msg.role}
@@ -457,7 +429,7 @@ export default function Chat() {
               </motion.div>
             )}
           </AnimatePresence>
-          
+
           {/* Scroll to bottom button */}
           <AnimatePresence>
             {showScrollButton && messages.length > 0 && (
@@ -466,9 +438,10 @@ export default function Chat() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 20, scale: 0.8 }}
                 onClick={handleScrollToBottom}
-                className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 p-3 rounded-full bg-primary/90 hover:bg-primary text-primary-foreground shadow-lg shadow-primary/30 backdrop-blur-sm border border-primary/50 transition-all duration-200"
+                className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 p-3 rounded-full bg-primary/90 hover:bg-primary text-primary-foreground shadow-lg shadow-primary/25 backdrop-blur-sm border border-primary/50 transition-all duration-200"
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
+                aria-label="Scroll to bottom"
               >
                 <ArrowDown className="w-5 h-5" />
               </motion.button>
@@ -478,11 +451,7 @@ export default function Chat() {
 
         {/* Input Area */}
         <div className="relative z-20 flex-shrink-0">
-          <ChatInput
-            onSend={handleSendMessage}
-            isLoading={isLoading}
-            disabled={!user}
-          />
+          <ChatInput onSend={handleSendMessage} isLoading={isLoading} disabled={!user} />
         </div>
       </main>
     </div>
