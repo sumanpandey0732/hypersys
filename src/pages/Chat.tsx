@@ -315,7 +315,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="min-h-screen min-h-[100dvh] flex w-full bg-background overflow-hidden">
+    <div className="h-screen h-[100dvh] flex w-full bg-background overflow-hidden">
       <ChatSidebar
         conversations={conversations}
         activeConversationId={activeConversationId}
@@ -330,7 +330,7 @@ export default function Chat() {
       />
 
       {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col min-h-screen min-h-[100dvh] relative w-full">
+      <main className="flex-1 flex flex-col h-full relative w-full min-w-0">
         {/* Ambient background */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-primary/5" />
@@ -404,8 +404,8 @@ export default function Chat() {
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin"
-          style={{ overscrollBehavior: 'contain', overflowAnchor: 'none' }}
+          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin min-h-0"
+          style={{ overscrollBehavior: 'contain', overflowAnchor: 'none', WebkitOverflowScrolling: 'touch' }}
         >
           <AnimatePresence mode="wait">
             {messages.length === 0 ? (
