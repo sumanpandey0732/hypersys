@@ -134,7 +134,7 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 5px;
+    width: 6px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -164,6 +164,11 @@
   
   .scrollbar-hidden::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Disable browser scroll anchoring to prevent jumps during streaming */
+  .overflow-anchor-none {
+    overflow-anchor: none;
   }
 
   .animate-pulse-glow {
