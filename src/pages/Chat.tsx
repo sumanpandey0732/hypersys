@@ -190,27 +190,22 @@ export default function Chat() {
   };
 
   // Handle sending message
-  const handleSendMessage = async (content: string, images?: string[]) => {
-    if ((!content.trim() && !images?.length) || isLoading) return;
+  const handleSendMessage = async (content: string) => {
+    if (!content.trim() || isLoading) return;
 
     // Enable auto-scroll when user sends a message
     shouldAutoScrollRef.current = true;
 
     let convId = activeConversationId;
 
-    // Build message content (with images if provided)
-    const messageContent = images?.length 
-      ? `${content}\n\n[Images attached: ${images.length}]` 
-      : content;
-
     if (!convId) {
-      convId = await createConversation(content || 'Image conversation');
+      convId = await createConversation(content);
       if (!convId) return;
     }
 
-    const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content: messageContent };
+    const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content };
     setMessages((prev) => [...prev, userMessage]);
-    await saveMessage(convId, 'user', messageContent);
+    await saveMessage(convId, 'user', content);
 
     const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     setMessages((prev) => [...prev, assistantMessage]);
@@ -380,39 +375,62 @@ export default function Chat() {
           />
         </div>
 
-        {/* Header */}
-        <header className="h-14 sm:h-16 border-b border-border/40 bg-background/80 backdrop-blur-2xl flex items-center px-3 sm:px-4 gap-3 sm:gap-4 relative z-20 flex-shrink-0">
+        {/* Premium Header */}
+        <header className="h-14 sm:h-16 border-b border-border/20 bg-background/60 backdrop-blur-2xl flex items-center px-3 sm:px-4 gap-3 sm:gap-4 relative z-20 flex-shrink-0">
+          {/* Subtle header gradient */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/[0.02] to-transparent pointer-events-none" />
+          
           <motion.button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-2.5 rounded-xl bg-secondary/60 hover:bg-secondary border border-border/40 transition-all duration-200"
+            className="relative p-2.5 rounded-xl bg-secondary/40 hover:bg-secondary/70 border border-border/30 transition-all duration-200 group"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             aria-label="Toggle sidebar"
           >
-            <Menu className="w-5 h-5 text-foreground/80" />
+            <Menu className="w-5 h-5 text-foreground/70 group-hover:text-foreground transition-colors" />
           </motion.button>
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <motion.div
-              className="hidden sm:flex w-9 h-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 items-center justify-center flex-shrink-0 border border-primary/20"
+              className="hidden sm:flex w-10 h-10 rounded-xl items-center justify-center flex-shrink-0 relative overflow-hidden"
               whileHover={{ scale: 1.1, rotate: 5 }}
             >
-              <Sparkles className="w-4 h-4 text-primary" />
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/25 via-primary/15 to-primary/5" />
+              <div className="absolute inset-0 border border-primary/25 rounded-xl" />
+              <Sparkles className="w-[18px] h-[18px] text-primary relative z-10" />
             </motion.div>
+            
             <div className="min-w-0">
-              <h1 className="font-display font-semibold text-base sm:text-lg truncate text-foreground">
+              <h1 className="font-display font-semibold text-base sm:text-lg truncate text-foreground/90">
                 {activeConversationId
                   ? conversations.find((c) => c.id === activeConversationId)?.title || 'Chat'
                   : 'New Chat'}
               </h1>
               {isLoading && (
-                <motion.p
-                  className="text-xs text-primary flex items-center gap-1.5"
+                <motion.div
+                  className="flex items-center gap-2"
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                  AI is thinking...
-                </motion.p>
+                  <div className="flex gap-1">
+                    <motion.span 
+                      className="w-1.5 h-1.5 rounded-full bg-primary"
+                      animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: 0 }}
+                    />
+                    <motion.span 
+                      className="w-1.5 h-1.5 rounded-full bg-primary"
+                      animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
+                    />
+                    <motion.span 
+                      className="w-1.5 h-1.5 rounded-full bg-primary"
+                      animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
+                    />
+                  </div>
+                  <span className="text-xs text-primary/80 font-medium">Generating...</span>
+                </motion.div>
               )}
             </div>
           </div>
