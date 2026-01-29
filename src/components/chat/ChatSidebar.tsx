@@ -183,16 +183,6 @@ export default function ChatSidebar({
           </div>
         </div>
       </motion.aside>
-
-      {/* Mobile toggle button */}
-      {isCollapsed && (
-        <button
-          onClick={onToggleCollapse}
-          className="fixed top-4 left-4 z-50 p-3 rounded-xl bg-secondary/80 backdrop-blur-sm border border-border/50 hover:bg-secondary transition-colors lg:hidden"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-      )}
     </>
   );
 }
