@@ -190,28 +190,36 @@ export default function Chat() {
   };
 
   // Handle sending message
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return;
+  const handleSendMessage = async (content: string, images?: string[]) => {
+    if ((!content.trim() && !images?.length) || isLoading) return;
 
     // Enable auto-scroll when user sends a message
     shouldAutoScrollRef.current = true;
 
     let convId = activeConversationId;
 
+    // Build message content (with images if provided)
+    const messageContent = images?.length 
+      ? `${content}\n\n[Images attached: ${images.length}]` 
+      : content;
+
     if (!convId) {
-      convId = await createConversation(content);
+      convId = await createConversation(content || 'Image conversation');
       if (!convId) return;
     }
 
-    const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content };
+    const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content: messageContent };
     setMessages((prev) => [...prev, userMessage]);
-    await saveMessage(convId, 'user', content);
+    await saveMessage(convId, 'user', messageContent);
 
     const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     setMessages((prev) => [...prev, assistantMessage]);
     setIsLoading(true);
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -221,11 +229,21 @@ export default function Chat() {
         body: JSON.stringify({
           messages: [...messages, userMessage].map((m) => ({ role: m.role, content: m.content })),
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to get response');
+        const errorText = await response.text();
+        let errorMsg = 'Failed to get response';
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMsg = errorJson.error || errorMsg;
+        } catch {
+          errorMsg = errorText || errorMsg;
+        }
+        throw new Error(errorMsg);
       }
 
       if (!response.body) throw new Error('No response body');
@@ -417,12 +435,12 @@ export default function Chat() {
                 animate={{ opacity: 1 }}
                 className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-3 sm:space-y-4"
               >
-                {messages.map((msg) => (
+                {messages.map((msg, index) => (
                   <ChatMessage
                     key={msg.id}
                     role={msg.role}
                     content={msg.content}
-                    isStreaming={isLoading && msg.role === 'assistant' && !msg.content}
+                    isStreaming={isLoading && msg.role === 'assistant' && index === messages.length - 1}
                   />
                 ))}
                 <div ref={messagesEndRef} className="h-4" />
