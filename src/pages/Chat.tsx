@@ -5,7 +5,7 @@ import ChatSidebar from '@/components/chat/ChatSidebar';
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
-import { Menu, Sparkles, ArrowDown } from 'lucide-react';
+import { Menu, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -466,23 +466,6 @@ export default function Chat() {
             )}
           </AnimatePresence>
 
-          {/* Scroll to bottom button */}
-          <AnimatePresence>
-            {showScrollButton && messages.length > 0 && (
-              <motion.button
-                initial={{ opacity: 0, y: 20, scale: 0.8 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 20, scale: 0.8 }}
-                onClick={handleScrollToBottom}
-                className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-30 p-3 rounded-full bg-primary/90 hover:bg-primary text-primary-foreground shadow-lg shadow-primary/25 backdrop-blur-sm border border-primary/50 transition-all duration-200"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                aria-label="Scroll to bottom"
-              >
-                <ArrowDown className="w-5 h-5" />
-              </motion.button>
-            )}
-          </AnimatePresence>
         </div>
 
         {/* Input Area */}
