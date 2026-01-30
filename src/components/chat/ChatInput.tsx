@@ -23,18 +23,13 @@ export default function ChatInput({ onSend, isLoading, disabled }: ChatInputProp
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !isLoading && !disabled) {
+      // Blur textarea to close mobile keyboard
+      textareaRef.current?.blur();
       onSend(message.trim());
       setMessage('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
     }
   };
 
@@ -120,7 +115,6 @@ export default function ChatInput({ onSend, isLoading, disabled }: ChatInputProp
                 ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
                 placeholder="Message Hypermid..."
