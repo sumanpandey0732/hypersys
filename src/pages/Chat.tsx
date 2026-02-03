@@ -29,16 +29,13 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Scroll refs
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // Scroll state
-  const shouldAutoScrollRef = useRef(true);
-  const isProgrammaticScrollRef = useRef(false);
-  const scrollRafRef = useRef<number | null>(null);
+  // Abort controller for stopping generation
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Load conversations
   const loadConversations = useCallback(async () => {
@@ -84,71 +81,11 @@ export default function Chat() {
         content: m.content,
       })) || []
     );
-
-    // Reset scroll state when loading conversation
-    shouldAutoScrollRef.current = true;
-    requestAnimationFrame(() => {
-      scrollToBottom(true);
-    });
   }, [activeConversationId]);
 
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
-
-  // Scroll to bottom helper - ChatGPT style
-  const scrollToBottom = useCallback((instant = false) => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    if (!shouldAutoScrollRef.current) return;
-
-    if (scrollRafRef.current) {
-      cancelAnimationFrame(scrollRafRef.current);
-    }
-
-    scrollRafRef.current = requestAnimationFrame(() => {
-      isProgrammaticScrollRef.current = true;
-      const targetTop = el.scrollHeight;
-
-      if (instant) {
-        el.scrollTop = targetTop;
-      } else {
-        el.scrollTo({ top: targetTop, behavior: 'smooth' });
-      }
-
-      // Allow user scroll detection again after a short delay
-      setTimeout(() => {
-        isProgrammaticScrollRef.current = false;
-      }, 100);
-    });
-  }, []);
-
-  // Handle user scroll - detect if they scroll away from bottom
-  const handleScroll = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-
-    // Ignore programmatic scrolls
-    if (isProgrammaticScrollRef.current) return;
-
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const isNearBottom = distanceFromBottom < 120;
-
-    // Show/hide scroll button
-    setShowScrollButton(distanceFromBottom > 200);
-
-    // Update auto-scroll preference based on user position
-    shouldAutoScrollRef.current = isNearBottom;
-  }, []);
-
-  // Auto-scroll on new messages (ChatGPT behavior)
-  useEffect(() => {
-    // Only scroll if user is near bottom
-    if (shouldAutoScrollRef.current) {
-      // Use instant scroll during streaming for smooth follow, smooth after
-      scrollToBottom(isLoading);
-    }
-  }, [messages, isLoading, scrollToBottom]);
 
   // Create new conversation
   const createConversation = async (firstMessage: string): Promise<string | null> => {
@@ -193,9 +130,6 @@ export default function Chat() {
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
 
-    // Enable auto-scroll when user sends a message
-    shouldAutoScrollRef.current = true;
-
     let convId = activeConversationId;
 
     if (!convId) {
@@ -211,10 +145,10 @@ export default function Chat() {
     setMessages((prev) => [...prev, assistantMessage]);
     setIsLoading(true);
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+    // Create abort controller for this request
+    abortControllerRef.current = new AbortController();
 
+    try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -224,10 +158,8 @@ export default function Chat() {
         body: JSON.stringify({
           messages: [...messages, userMessage].map((m) => ({ role: m.role, content: m.content })),
         }),
-        signal: controller.signal,
+        signal: abortControllerRef.current.signal,
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -289,11 +221,24 @@ export default function Chat() {
 
       loadConversations();
     } catch (error) {
-      console.error('Chat error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to send message');
-      setMessages((prev) => prev.filter((m) => m.id !== assistantMessage.id));
+      // Don't show error for user-initiated abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Request aborted by user');
+      } else {
+        console.error('Chat error:', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to send message');
+        setMessages((prev) => prev.filter((m) => m.id !== assistantMessage.id));
+      }
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  // Stop generation
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   };
 
@@ -315,15 +260,6 @@ export default function Chat() {
     if (activeConversationId === id) {
       setActiveConversationId(null);
       setMessages([]);
-    }
-  };
-
-  const handleScrollToBottom = () => {
-    shouldAutoScrollRef.current = true;
-    setShowScrollButton(false);
-    const el = scrollContainerRef.current;
-    if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
   };
 
@@ -436,12 +372,11 @@ export default function Chat() {
           </div>
         </header>
 
-        {/* Messages Area */}
+        {/* Messages Area - No auto-scroll */}
         <div
           ref={scrollContainerRef}
-          onScroll={handleScroll}
           className="relative z-10 flex-1 overflow-y-auto scrollbar-thin min-h-0"
-          style={{ overscrollBehavior: 'contain', overflowAnchor: 'none', WebkitOverflowScrolling: 'touch' }}
+          style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
         >
           <AnimatePresence mode="wait">
             {messages.length === 0 ? (
@@ -470,7 +405,12 @@ export default function Chat() {
 
         {/* Input Area */}
         <div className="relative z-20 flex-shrink-0">
-          <ChatInput onSend={handleSendMessage} isLoading={isLoading} disabled={!user} />
+          <ChatInput 
+            onSend={handleSendMessage} 
+            isLoading={isLoading} 
+            disabled={!user} 
+            onStop={handleStopGeneration}
+          />
         </div>
       </main>
     </div>
