@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { User, Sparkles, Copy, Check } from 'lucide-react';
+import { Sparkles, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -71,8 +71,35 @@ function CodeBlock({ language, children }: { language: string; children: string 
   );
 }
 
+function formatAssistantContent(raw: string) {
+  if (!raw) return raw;
+
+  // If model returns “✅ ... ✅ ... ✅ ...” in one paragraph, split into separate lines.
+  // Keep this conservative to avoid breaking normal prose.
+  let text = raw;
+
+  // Ensure each checkmark starts its own paragraph.
+  text = text.replace(/\s*(✅|☑️|✔️)\s+/g, (m, mark) => `\n\n${mark} `);
+
+  // If bullets appear in a single line, try to separate them.
+  text = text.replace(/\s*•\s+/g, '\n\n• ');
+
+  // Trim excessive leading newlines introduced by the transformations.
+  return text.replace(/^\n+/, '').replace(/\n{4,}/g, '\n\n\n');
+}
+
 export default function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
   const isUser = role === 'user';
+  const [copiedAll, setCopiedAll] = useState(false);
+
+  const assistantContent = isUser ? content : formatAssistantContent(content);
+
+  const handleCopyAll = async () => {
+    if (!assistantContent) return;
+    await navigator.clipboard.writeText(assistantContent);
+    setCopiedAll(true);
+    setTimeout(() => setCopiedAll(false), 2000);
+  };
 
   return (
     <motion.div
@@ -94,11 +121,32 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
         // AI message - full width, clean design
         <div className="w-full">
           {/* AI indicator */}
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 justify-between">
+            <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg bg-primary/20 flex items-center justify-center">
               <Sparkles className="w-3.5 h-3.5 text-primary" />
             </div>
             <span className="text-xs font-medium text-primary/70">Hypermid</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopyAll}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 hover:bg-secondary text-xs text-muted-foreground hover:text-foreground transition-all duration-200 border border-border/30"
+              aria-label="Copy answer"
+            >
+              {copiedAll ? (
+                <>
+                  <Check className="w-3 h-3 text-primary" />
+                  <span className="text-primary">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/* Message content */}
@@ -140,7 +188,7 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                     ),
                     li: ({ children }) => (
                       <li className="flex items-start gap-2 text-sm sm:text-[15px] leading-relaxed text-foreground/90">
-                        <span className="flex-shrink-0 mt-2 w-1.5 h-1.5 rounded-full bg-primary" />
+                        <span className="flex-shrink-0 mt-2 w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
                         <span className="flex-1">{children}</span>
                       </li>
                     ),
@@ -204,7 +252,7 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                     ),
                   }}
                 >
-                  {content}
+                  {assistantContent}
                 </ReactMarkdown>
               </div>
             ) : isStreaming ? (

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Sparkles, Zap, Globe, Shield, Rocket, Brain, Heart } from 'lucide-react';
+import { Sparkles, Zap, Globe, Shield, Rocket } from 'lucide-react';
 
 interface WelcomeScreenProps {
   onSuggestionClick: (suggestion: string) => void;
@@ -107,7 +107,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
             className="text-muted-foreground text-base sm:text-lg md:text-xl max-w-md mx-auto leading-relaxed px-2"
             variants={itemVariants}
           >
-            Your intelligent AI companion
+            Your smart, friendly assistant
           </motion.p>
         </motion.header>
 
@@ -117,10 +117,8 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
           variants={itemVariants}
         >
           {[
-            { icon: Brain, label: "Emotionally Intelligent", color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20" },
             { icon: Zap, label: "Lightning Fast", color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20" },
             { icon: Globe, label: "Real-time Search", color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/20" },
-            { icon: Heart, label: "Understands You", color: "text-rose-400", bg: "bg-rose-500/10", border: "border-rose-500/20" },
             { icon: Shield, label: "Secure & Private", color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
             { icon: Rocket, label: "Always Learning", color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
           ].map((badge, index) => (
