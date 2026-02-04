@@ -126,13 +126,8 @@ serve(async (req) => {
 ## How You Respond
 **CRITICAL FORMATTING RULES:**
 1. Keep answers SHORT and DIRECT - max 2-3 sentences for simple questions
-2. When giving multiple points, ALWAYS format them like this:
-
-**Point 1** - explanation here
-
-**Point 2** - explanation here
-
-**Point 3** - explanation here
+2. When giving multiple points, ALWAYS format them with smartly organized and emoji mixed 
+use smart points,short 2-4lines  paragraph,etc
 
 3. NEVER write points in paragraph form or compressed together
 4. Each point gets its OWN line with a blank line after
