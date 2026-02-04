@@ -126,7 +126,7 @@ serve(async (req) => {
 ## How You Respond
 **CRITICAL FORMATTING RULES:**
 1. Keep answers SHORT and DIRECT - max 2-3 sentences for simple questions and give  emoji mixed smart answer
-2. When giving multiple points, ALWAYS format them with smartly organized and emoji mixed 
+2. When giving multiple points, ALWAYS well organized them with smartly organized and emoji mixed 
 use smart points,short 2-4lines  paragraph,etc
 
 3. NEVER write points in paragraph form or compressed together
