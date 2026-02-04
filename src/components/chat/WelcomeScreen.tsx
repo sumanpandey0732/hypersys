@@ -107,10 +107,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
             className="text-muted-foreground text-base sm:text-lg md:text-xl max-w-md mx-auto leading-relaxed px-2"
             variants={itemVariants}
           >
-            Your intelligent companion that understands
-            <span className="text-primary font-semibold"> emotions</span>,
-            <span className="text-primary font-semibold"> context</span>, and
-            <span className="text-primary font-semibold"> you</span>.
+            Your intelligent AI companion
           </motion.p>
         </motion.header>
 

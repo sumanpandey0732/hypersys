@@ -141,6 +141,11 @@ export default function Chat() {
     setMessages((prev) => [...prev, userMessage]);
     await saveMessage(convId, 'user', content);
 
+    // Scroll to the new message
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+
     const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     setMessages((prev) => [...prev, assistantMessage]);
     setIsLoading(true);
