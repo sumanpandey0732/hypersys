@@ -45,26 +45,40 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
 
+      let finalTranscript = '';
+
       recognitionRef.current.onresult = (event: any) => {
-        let transcript = '';
+        let interimTranscript = '';
+        
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+            setMessage(prev => (prev + transcript + ' ').trim());
+          } else {
+            interimTranscript += transcript;
+          }
         }
-        setMessage(prev => prev + transcript);
       };
 
-      recognitionRef.current.onerror = () => {
+      recognitionRef.current.onerror = (event: any) => {
+        console.log('Speech recognition error:', event.error);
         setIsListening(false);
       };
 
       recognitionRef.current.onend = () => {
         setIsListening(false);
+        finalTranscript = '';
       };
     }
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore
+        }
       }
     };
   }, []);
@@ -287,15 +301,6 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
             </div>
           </div>
         </div>
-        
-        <motion.p 
-          className="text-[10px] sm:text-xs text-muted-foreground/40 text-center mt-3 px-2 font-medium"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-        >
-          Hypermid understands emotions • Real-time search • Web grounded
-        </motion.p>
       </form>
     </div>
   );
