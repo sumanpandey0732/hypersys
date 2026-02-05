@@ -13,6 +13,7 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  imageUrl?: string;
 }
 
 interface Conversation {
@@ -146,6 +147,10 @@ export default function Chat() {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
 
+    // Check if this is an image generation request
+    const imageKeywords = ['generate image', 'create image', 'draw', 'make image', 'generate a picture', 'create a picture', 'generate picture', 'make a picture', 'imagine', 'visualize', 'paint', 'sketch'];
+    const isImageRequest = imageKeywords.some(keyword => content.toLowerCase().includes(keyword));
+
     const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     setMessages((prev) => [...prev, assistantMessage]);
     setIsLoading(true);
@@ -154,7 +159,11 @@ export default function Chat() {
     abortControllerRef.current = new AbortController();
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const endpoint = isImageRequest 
+        ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-image`
+        : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -162,6 +171,7 @@ export default function Chat() {
         },
         body: JSON.stringify({
           messages: [...messages, userMessage].map((m) => ({ role: m.role, content: m.content })),
+          prompt: content,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -178,50 +188,76 @@ export default function Chat() {
         throw new Error(errorMsg);
       }
 
-      if (!response.body) throw new Error('No response body');
+      // Handle image response differently
+      if (isImageRequest) {
+        const data = await response.json();
+        if (data.imageUrl) {
+          const imageContent = `Here's the image I created for you! ✨\n\n![Generated Image](${data.imageUrl})\n\n${data.message || ''}`;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessage.id ? { ...m, content: imageContent, imageUrl: data.imageUrl } : m
+            )
+          );
+          await saveMessage(convId, 'assistant', imageContent);
+        } else {
+          throw new Error(data.error || 'Failed to generate image');
+        }
+      } else {
+        // Handle streaming text response
+        if (!response.body) throw new Error('No response body');
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let textBuffer = '';
-      let fullContent = '';
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let textBuffer = '';
+        let fullContent = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        textBuffer += decoder.decode(value, { stream: true });
+          textBuffer += decoder.decode(value, { stream: true });
 
-        let newlineIndex: number;
-        while ((newlineIndex = textBuffer.indexOf('\n')) !== -1) {
-          let line = textBuffer.slice(0, newlineIndex);
-          textBuffer = textBuffer.slice(newlineIndex + 1);
+          let newlineIndex: number;
+          while ((newlineIndex = textBuffer.indexOf('\n')) !== -1) {
+            let line = textBuffer.slice(0, newlineIndex);
+            textBuffer = textBuffer.slice(newlineIndex + 1);
 
-          if (line.endsWith('\r')) line = line.slice(0, -1);
-          if (line.startsWith(':') || line.trim() === '') continue;
-          if (!line.startsWith('data: ')) continue;
+            if (line.endsWith('\r')) line = line.slice(0, -1);
+            if (line.startsWith(':') || line.trim() === '') continue;
+            if (!line.startsWith('data: ')) continue;
 
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === '[DONE]') continue;
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === '[DONE]') continue;
 
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) {
-              fullContent += delta;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMessage.id ? { ...m, content: fullContent } : m
-                )
-              );
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const delta = parsed.choices?.[0]?.delta?.content;
+              if (delta) {
+                fullContent += delta;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessage.id ? { ...m, content: fullContent } : m
+                  )
+                );
+              }
+            } catch {
+              // Incomplete JSON, skip
             }
-          } catch {
-            // Incomplete JSON, skip
           }
         }
-      }
 
-      if (fullContent) {
-        await saveMessage(convId, 'assistant', fullContent);
+        if (fullContent) {
+          await saveMessage(convId, 'assistant', fullContent);
+        } else {
+          // If no content was received, show a friendly error
+          const fallbackContent = "I'm here! 😊 Could you try asking again? Sometimes I need a moment to gather my thoughts.";
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessage.id ? { ...m, content: fallbackContent } : m
+            )
+          );
+          await saveMessage(convId, 'assistant', fallbackContent);
+        }
       }
 
       loadConversations();
@@ -229,10 +265,21 @@ export default function Chat() {
       // Don't show error for user-initiated abort
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('Request aborted by user');
+        // Keep partial content if any
+        const currentMsg = messages.find(m => m.id === assistantMessage.id);
+        if (currentMsg?.content) {
+          await saveMessage(convId, 'assistant', currentMsg.content);
+        }
       } else {
         console.error('Chat error:', error);
         toast.error(error instanceof Error ? error.message : 'Failed to send message');
-        setMessages((prev) => prev.filter((m) => m.id !== assistantMessage.id));
+        // Show friendly error message instead of removing
+        const errorContent = "Oops! Something went wrong on my end. 😅 Let's try that again!";
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessage.id ? { ...m, content: errorContent } : m
+          )
+        );
       }
     } finally {
       setIsLoading(false);

@@ -16,6 +16,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
   const [hasVoiceSupport, setHasVoiceSupport] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
+  const lastTranscriptRef = useRef<string>('');
 
   // Auto-focus and open keyboard on mount (for mobile)
   useEffect(() => {
@@ -41,23 +42,21 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
     if (SpeechRecognitionAPI) {
       setHasVoiceSupport(true);
       recognitionRef.current = new SpeechRecognitionAPI();
-      recognitionRef.current.continuous = true;
+      recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
 
-      let finalTranscript = '';
-
       recognitionRef.current.onresult = (event: any) => {
-        let interimTranscript = '';
+        // Only process the last result to avoid duplicates
+        const result = event.results[event.results.length - 1];
+        const transcript = result[0].transcript.trim();
         
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' ';
-            setMessage(prev => (prev + transcript + ' ').trim());
-          } else {
-            interimTranscript += transcript;
-          }
+        if (result.isFinal && transcript !== lastTranscriptRef.current) {
+          lastTranscriptRef.current = transcript;
+          setMessage(prev => {
+            const newMsg = prev ? `${prev} ${transcript}` : transcript;
+            return newMsg;
+          });
         }
       };
 
@@ -68,7 +67,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
 
       recognitionRef.current.onend = () => {
         setIsListening(false);
-        finalTranscript = '';
+        lastTranscriptRef.current = '';
       };
     }
 
@@ -90,6 +89,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
+      lastTranscriptRef.current = '';
       recognitionRef.current.start();
       setIsListening(true);
     }
