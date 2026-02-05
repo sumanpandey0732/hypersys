@@ -141,6 +141,8 @@
  
  NEVER compress like: "✅ Point one ✅ Point two" — this is WRONG!
  Each point needs its own paragraph with a blank line before it.
+
+##*separate each point or idea separately*##
  
  ## Example Response
  User: "Tips for better sleep?"
