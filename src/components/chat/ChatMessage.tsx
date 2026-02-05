@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion';
-import { Sparkles, Copy, Check } from 'lucide-react';
+import { Sparkles, Copy, Check, Volume2, VolumeX } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -91,6 +91,8 @@ function formatAssistantContent(raw: string) {
 export default function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
   const isUser = role === 'user';
   const [copiedAll, setCopiedAll] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const assistantContent = isUser ? content : formatAssistantContent(content);
 
@@ -99,6 +101,41 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
     await navigator.clipboard.writeText(assistantContent);
     setCopiedAll(true);
     setTimeout(() => setCopiedAll(false), 2000);
+  };
+
+  const handleSpeak = () => {
+    if (!assistantContent) return;
+    
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    // Create utterance
+    const utterance = new SpeechSynthesisUtterance(assistantContent);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    
+    // Try to use a natural voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => 
+      v.name.includes('Google') || 
+      v.name.includes('Samantha') || 
+      v.name.includes('Natural') ||
+      v.lang.startsWith('en')
+    );
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    
+    speechRef.current = utterance;
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
   };
 
   return (
@@ -129,24 +166,45 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
             <span className="text-xs font-medium text-primary/70">Hypermid</span>
             </div>
 
-            <button
-              type="button"
-              onClick={handleCopyAll}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 hover:bg-secondary text-xs text-muted-foreground hover:text-foreground transition-all duration-200 border border-border/30"
-              aria-label="Copy answer"
-            >
-              {copiedAll ? (
-                <>
-                  <Check className="w-3 h-3 text-primary" />
-                  <span className="text-primary">Copied</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3 h-3" />
-                  <span>Copy</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-1.5">
+              {/* Speak button */}
+              <button
+                type="button"
+                onClick={handleSpeak}
+                className={`flex items-center justify-center w-7 h-7 rounded-md transition-all duration-200 border ${
+                  isSpeaking 
+                    ? 'bg-primary/20 text-primary border-primary/30' 
+                    : 'bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border-border/30'
+                }`}
+                aria-label={isSpeaking ? "Stop speaking" : "Read aloud"}
+              >
+                {isSpeaking ? (
+                  <VolumeX className="w-3.5 h-3.5" />
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+
+              {/* Copy button */}
+              <button
+                type="button"
+                onClick={handleCopyAll}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 hover:bg-secondary text-xs text-muted-foreground hover:text-foreground transition-all duration-200 border border-border/30"
+                aria-label="Copy answer"
+              >
+                {copiedAll ? (
+                  <>
+                    <Check className="w-3 h-3 text-primary" />
+                    <span className="text-primary">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Message content */}
