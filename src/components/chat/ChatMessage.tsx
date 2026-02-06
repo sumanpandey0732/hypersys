@@ -74,17 +74,27 @@ function CodeBlock({ language, children }: { language: string; children: string 
 function formatAssistantContent(raw: string) {
   if (!raw) return raw;
 
-  // If model returns “✅ ... ✅ ... ✅ ...” in one paragraph, split into separate lines.
-  // Keep this conservative to avoid breaking normal prose.
   let text = raw;
 
-  // Ensure each checkmark starts its own paragraph.
-  text = text.replace(/\s*(✅|☑️|✔️)\s+/g, (m, mark) => `\n\n${mark} `);
+  // Ensure emoji bullets start their own paragraph
+  const emojiBullets = ['✨', '🎯', '💡', '✅', '🌙', '📱', '🛏️', '⭐', '🔥', '💪', '🚀', '📌', '👀', '❤️', '💫', '🌟', '⚡', '🎉', '👍', '💯', '🔑', '📝', '💻', '🎨', '🌈', '☀️', '🌺', '🍀', '🎁', '💎', '🏆', '🥇', '✔️', '❌', '⚠️', '💬', '🤔', '😊', '😎', '🙌', '👏', '☑️'];
+  
+  emojiBullets.forEach(emoji => {
+    const escapedEmoji = emoji.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    text = text.replace(new RegExp(`([^\\n])\\s*(${escapedEmoji})\\s*\\*\\*`, 'g'), '$1\n\n$2 **');
+    text = text.replace(new RegExp(`([^\\n])\\s*(${escapedEmoji})\\s+`, 'g'), '$1\n\n$2 ');
+  });
 
-  // If bullets appear in a single line, try to separate them.
-  text = text.replace(/\s*•\s+/g, '\n\n• ');
+  // Ensure regular bullets start their own paragraph
+  text = text.replace(/([^\n])\s*•\s+/g, '$1\n\n• ');
+  text = text.replace(/([^\n])\s*►\s+/g, '$1\n\n► ');
+  text = text.replace(/([^\n])\s*→\s+/g, '$1\n\n→ ');
+  text = text.replace(/([^\n])\s*➤\s+/g, '$1\n\n➤ ');
+  
+  // Ensure numbered points start their own paragraph
+  text = text.replace(/([^\n])(\d+\.\s*\*\*)/g, '$1\n\n$2');
 
-  // Trim excessive leading newlines introduced by the transformations.
+  // Clean up excessive newlines
   return text.replace(/^\n+/, '').replace(/\n{4,}/g, '\n\n\n');
 }
 
