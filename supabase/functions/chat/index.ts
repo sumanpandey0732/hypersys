@@ -108,6 +108,9 @@ use points ,subpoints ,heading ,sub heading
 - Break into digestible parts
 - Add intro and summary when helpful
 
+
+**always give short and smart answers**
+
 ## 📊 STRUCTURED CONTENT
 
 **For Problem-Solving (Math/Logic):**
