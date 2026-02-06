@@ -76,26 +76,47 @@ function formatAssistantContent(raw: string) {
 
   let text = raw;
 
-  // Ensure emoji bullets start their own paragraph
-  const emojiBullets = ['✨', '🎯', '💡', '✅', '🌙', '📱', '🛏️', '⭐', '🔥', '💪', '🚀', '📌', '👀', '❤️', '💫', '🌟', '⚡', '🎉', '👍', '💯', '🔑', '📝', '💻', '🎨', '🌈', '☀️', '🌺', '🍀', '🎁', '💎', '🏆', '🥇', '✔️', '❌', '⚠️', '💬', '🤔', '😊', '😎', '🙌', '👏', '☑️'];
+  // Comprehensive emoji list for bullet points
+  const emojiBullets = [
+    '✨', '🎯', '💡', '✅', '🌙', '📱', '🛏️', '⭐', '🔥', '💪', '🚀', '📌', '👀', '❤️', '💫', 
+    '🌟', '⚡', '🎉', '👍', '💯', '🔑', '📝', '💻', '🎨', '🌈', '☀️', '🌺', '🍀', '🎁', '💎', 
+    '🏆', '🥇', '✔️', '❌', '⚠️', '💬', '🤔', '😊', '😎', '🙌', '👏', '☑️', '🤗', '💖', '🎶',
+    '📚', '🧠', '💼', '🌍', '🔮', '🎭', '🎪', '🎢', '🎡', '🎠', '🏠', '🏡', '🏢', '🌸', '🌻',
+    '🌼', '🌷', '🌹', '🍎', '🍊', '🍋', '🍇', '🍓', '🥑', '🥕', '🌽', '🥦', '🧩', '🎮', '🎲'
+  ];
   
+  // Force double line breaks before emoji bullets
   emojiBullets.forEach(emoji => {
     const escapedEmoji = emoji.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Emoji followed by bold text
     text = text.replace(new RegExp(`([^\\n])\\s*(${escapedEmoji})\\s*\\*\\*`, 'g'), '$1\n\n$2 **');
-    text = text.replace(new RegExp(`([^\\n])\\s*(${escapedEmoji})\\s+`, 'g'), '$1\n\n$2 ');
+    // Emoji followed by regular text
+    text = text.replace(new RegExp(`([^\\n])\\s*(${escapedEmoji})\\s+([^*])`, 'g'), '$1\n\n$2 $3');
+    // Emoji at start of a cramped line
+    text = text.replace(new RegExp(`\\n(${escapedEmoji})\\s*\\*\\*`, 'g'), '\n\n$1 **');
   });
 
-  // Ensure regular bullets start their own paragraph
+  // Force line breaks for various bullet styles
   text = text.replace(/([^\n])\s*•\s+/g, '$1\n\n• ');
   text = text.replace(/([^\n])\s*►\s+/g, '$1\n\n► ');
   text = text.replace(/([^\n])\s*→\s+/g, '$1\n\n→ ');
   text = text.replace(/([^\n])\s*➤\s+/g, '$1\n\n➤ ');
+  text = text.replace(/([^\n])\s*-\s+\*\*/g, '$1\n\n- **');
   
-  // Ensure numbered points start their own paragraph
+  // Force line breaks for numbered lists with bold
   text = text.replace(/([^\n])(\d+\.\s*\*\*)/g, '$1\n\n$2');
+  
+  // Force line breaks for headers
+  text = text.replace(/([^\n])(#{1,3}\s)/g, '$1\n\n$2');
+  
+  // Ensure dash-based dividers are spaced
+  text = text.replace(/([^\n])(\n---\n)/g, '$1\n\n---\n\n');
 
-  // Clean up excessive newlines
-  return text.replace(/^\n+/, '').replace(/\n{4,}/g, '\n\n\n');
+  // Clean up but preserve intentional spacing
+  return text
+    .replace(/^\n+/, '')
+    .replace(/\n{5,}/g, '\n\n\n')
+    .trim();
 }
 
 export default function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
@@ -122,22 +143,59 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
       return;
     }
 
-    // Create utterance
-    const utterance = new SpeechSynthesisUtterance(assistantContent);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
+    // Clean text for speech - remove markdown formatting
+    const cleanText = assistantContent
+      .replace(/\*\*/g, '') // Remove bold
+      .replace(/\*/g, '')   // Remove italics
+      .replace(/`/g, '')    // Remove code blocks
+      .replace(/#{1,6}\s/g, '') // Remove headers
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+      .replace(/!\[.*?\]\(.*?\)/g, '') // Remove images
+      .replace(/[-•►→➤✨🎯💡✅🌟⭐💪🚀📌❤️💫⚡🎉👍💯🔑📝💻🎨🌈☀️💎🏆🤔😊😎🙌👏🤗💖]/g, '') // Remove bullets/emojis
+      .replace(/\n{2,}/g, '. ') // Convert double newlines to pauses
+      .replace(/\n/g, ' ')
+      .trim();
+
+    // Create utterance with optimized settings
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 0.95; // Slightly slower for clarity
+    utterance.pitch = 1.05; // Slightly higher for friendliness
     utterance.volume = 1.0;
     
-    // Try to use a natural voice
-    const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find(v => 
-      v.name.includes('Google') || 
-      v.name.includes('Samantha') || 
-      v.name.includes('Natural') ||
-      v.lang.startsWith('en')
-    );
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
+    // Wait for voices to load then select best one
+    const selectVoice = () => {
+      const voices = window.speechSynthesis.getVoices();
+      
+      // Priority order for natural-sounding voices
+      const voicePreferences = [
+        'Google UK English Female',
+        'Google US English',
+        'Samantha',
+        'Microsoft Zira',
+        'Karen',
+        'Moira',
+        'Tessa',
+      ];
+      
+      let selectedVoice = voices.find(v => 
+        voicePreferences.some(pref => v.name.includes(pref))
+      );
+      
+      // Fallback to any English voice
+      if (!selectedVoice) {
+        selectedVoice = voices.find(v => v.lang.startsWith('en'));
+      }
+      
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+    };
+
+    // Try to select voice immediately or wait for voices to load
+    if (window.speechSynthesis.getVoices().length > 0) {
+      selectVoice();
+    } else {
+      window.speechSynthesis.onvoiceschanged = selectVoice;
     }
 
     utterance.onend = () => setIsSpeaking(false);
