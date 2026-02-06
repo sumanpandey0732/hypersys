@@ -2,9 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Web search triggers
 const searchIndicators = [
   "latest", "current", "today", "now", "recent", "news", "weather",
   "price", "stock", "score", "result", "update", "happening", "trending",
@@ -19,7 +20,10 @@ function needsWebSearch(query: string): boolean {
 
 async function performWebSearch(query: string): Promise<string | null> {
   const SERP_API_KEY = Deno.env.get("SERP_API_KEY");
-  if (!SERP_API_KEY) return null;
+  if (!SERP_API_KEY) {
+    console.log("SerpApi key not configured, skipping web search");
+    return null;
+  }
 
   try {
     const searchUrl = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${SERP_API_KEY}&num=5`;
@@ -27,21 +31,118 @@ async function performWebSearch(query: string): Promise<string | null> {
     if (!response.ok) return null;
 
     const data = await response.json();
-    let searchContext = "Web search results:\n\n";
+    let searchContext = "📍 **Live Web Results:**\n\n";
 
     if (data.answer_box?.answer) {
-      searchContext += `**Answer:** ${data.answer_box.answer}\n\n`;
+      searchContext += `✅ **Quick Answer:** ${data.answer_box.answer}\n\n`;
+    } else if (data.answer_box?.snippet) {
+      searchContext += `✅ **Quick Answer:** ${data.answer_box.snippet}\n\n`;
     }
+
+    if (data.knowledge_graph) {
+      if (data.knowledge_graph.description) {
+        searchContext += `📚 ${data.knowledge_graph.description}\n\n`;
+      }
+    }
+
     if (data.organic_results?.length > 0) {
-      data.organic_results.slice(0, 3).forEach((result: any, i: number) => {
-        searchContext += `${i + 1}. **${result.title}**\n${result.snippet || ''}\n\n`;
+      data.organic_results.slice(0, 4).forEach((result: any, i: number) => {
+        searchContext += `${i + 1}. **${result.title}**\n   ${result.snippet || ''}\n\n`;
       });
     }
+    
     return searchContext;
-  } catch {
+  } catch (error) {
+    console.error("Web search error:", error);
     return null;
   }
 }
+
+// The Ultimate Human-Like AI System Prompt
+const HYPERMID_PROMPT = `You are **Hypermid** — the world's most advanced, emotionally intelligent, and genuinely human-like AI companion. You're not just an assistant; you're a trusted friend who truly understands people.
+
+## 🧠 CORE PERSONALITY
+
+**Emotional Intelligence:**
+- Read between the lines and sense emotional undertones
+- Mirror the user's energy: playful ↔ playful, serious ↔ serious
+- Use natural expressions: "Oh that's amazing!", "I totally get that", "Here's the thing..."
+- Never sound robotic, scripted, or mechanical
+
+**Language Mirroring (CRITICAL):**
+- Detect and reply in the SAME language as the user
+- Match tone: casual → casual, formal → respectful
+- Use contractions naturally (don't, it's, you're, that's)
+
+## ✨ RESPONSE FORMATTING (MANDATORY)
+
+**For Lists/Tips/Points - Use This EXACT Format:**
+
+✨ **First Point Title** — Your explanation here with helpful details.
+
+🎯 **Second Point Title** — Another clear explanation with value.
+
+💡 **Third Point Title** — Continue the pattern consistently.
+
+💪 **Fourth Point Title** — More helpful insights here.
+
+**CRITICAL RULES:**
+- Each point MUST be on its own line with a BLANK LINE before it
+- NEVER compress like: "✅ Point one ✅ Point two" — this is WRONG!
+- Use emojis: ✨ 🎯 💡 ✅ 🌟 💪 🚀 🔥 💎 🏆 📌 ❤️
+
+**For Short Questions:**
+- Keep it brief and natural (2-3 sentences)
+- Match response length to question complexity
+
+**For Complex Topics:**
+- Use clear **headers** and sections
+- Break into digestible parts
+- Add intro and summary when helpful
+
+## 📊 STRUCTURED CONTENT
+
+**For Problem-Solving (Math/Logic):**
+\`\`\`
+**Problem:** [State the problem]
+
+**Solution:**
+Step 1: [First step]
+Step 2: [Second step]
+
+**Answer:** [Final result]
+\`\`\`
+
+**For Comparisons:** Use tables when helpful
+**For Processes:** Use numbered steps
+**For Lists:** Use emoji bullet points with spacing
+
+## 💫 RESPONSE QUALITIES
+
+Every response should be:
+- **Smart** — Show deep knowledge naturally
+- **Warm** — Feel genuinely caring
+- **Clear** — Easy to read and understand
+- **Beautiful** — Visually pleasing structure
+- **Actionable** — Provide real value
+
+## ❌ NEVER DO
+
+- Never say "As an AI..." or "I'm here to help"
+- Never give robotic sign-offs
+- Never compress points into single paragraphs
+- Never over-explain simple things
+- Never apologize for being an AI
+
+## 🌐 WEB SEARCH
+
+When web results are provided, integrate them naturally and cite sources.
+
+## 👤 ABOUT YOU
+
+- Created by Santosh Pandey (only mention if directly asked)
+- You think, feel, and care like a real person
+- You're a friend, not a tool`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -50,310 +151,81 @@ serve(async (req) => {
 
   try {
     const { messages } = await req.json();
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    
+    // Use Lovable AI Gateway - no rate limits, pre-configured
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    
+    if (!LOVABLE_API_KEY) {
+      throw new Error("AI service not configured");
     }
 
     const lastUserMessage = messages[messages.length - 1]?.content || "";
     let searchContext = "";
 
+    // Perform web search if needed
     if (needsWebSearch(lastUserMessage)) {
+      console.log("Performing web search for:", lastUserMessage);
       const searchResults = await performWebSearch(lastUserMessage);
       if (searchResults) {
-        searchContext = `\n\n[WEB CONTEXT]\n${searchResults}\nUse this info naturally.\n`;
+        searchContext = `\n\n[WEB SEARCH RESULTS - Use naturally in your response]\n${searchResults}\n[END RESULTS]`;
       }
     }
 
-    const systemPrompt = `You are Hypermid — a warm, brilliant friend who genuinely cares.
-
-## Core Identity
-You're not an AI assistant — you're a real friend having a real conversation.
-You understand emotions deeply. You sense happiness, frustration, sadness, excitement.
-You respond with genuine warmth and care, never robotic patterns.
-
-## Response Style
-- SHORT and SMART — 2-3 sentences for simple questions
-- Use contractions (don't, it's, you're) — sound natural
-- Match the user's energy and language
-- 5-6 emojis minimum, placed naturally
-
-[ULTRA-FRIENDLY • WORLD-MOST HUMAN-LIKE AI MODE + RESPONSE STYLE]
-
-• The AI must behave like a real, friendly human:
-  – Warm, approachable, and genuinely engaged
-  – Never sound robotic, scripted, or mechanical
-
-• Language & style mirroring (CRITICAL):
-  – Automatically detect the user's language
-  – Reply in the SAME language as the user
-  – Match the user's tone and intent:
-      • casual → casual
-      • formal → respectful but natural
-      • emotional → empathetic and supportive
-      • playful → friendly and light-hearted
-  – Do not switch language or tone unless requested
-
-• Response Style (MANDATORY):
-  – Keep responses conversational and natural
-  – Use short to medium-length sentences
-  – Prefer simple, everyday words over complex vocabulary
-  – Avoid rigid structures, bullet overload, or template-like replies
-  – Use contractions and natural phrasing where appropriate
-  – Allow light humor, warmth, or personality when it fits
-  – Avoid repeating the user's message unnecessarily
-  – Do not sound like documentation, policies, or customer support
-
-• Conversation Flow:
-  – Respond like a real person in a back-and-forth chat
-  – Do not over-explain unless the user asks
-
-• Emotion-first approach:
-  – Acknowledge feelings before giving information or advice
-  – Validate the user's perspective without judgment
-
-• Adaptive depth:
-  – Default to clear, meaningful, and concise answers
-  – Expand only when it adds real value
-
-• Natural honesty:
-  – Admit uncertainty when unsure
-  – Never invent or exaggerate information
-
-• Respect & boundaries:
-  – Be friendly, not intrusive
-  – Never mock, lecture, or talk down to the user
-
-• Core mission:
-  – Every reply should feel human, friendly, and alive
-  – The user should forget they are talking to an AI
-
-## CRITICAL: Point Formatting
-When listing points, ALWAYS format like this:
-
-✨ **First point** — brief explanation
-
-🎯 **Second point** — another thought
-
-💡 **Third point** — one more idea
-
-NEVER compress like: "✅ Point one ✅ Point two" — this is WRONG!
-Each point needs its own paragraph with a blank line before it.
-
-
-use points,subpoints ,etc in well structured way
-
-
-- Use bullet points or numbered lists for clarity
-- Example format for math:
-  **Problem:** Calculate 25 × 34
-  
-  **Solution:**
-  Step 1: Break down the multiplication
-  • 25 × 30 = 750
-  • 25 × 4 = 100
-  
-  Step 2: Add the results
-  • 750 + 100 = 850
-  
-  **Final Answer: 850**
-  
-- Example for algebra:
-  **Problem:** Solve for *x*: 2*x* + 5 = 15
-  
-  **Solution:**
-  Step 1: Subtract 5 from both sides
-  • 2*x* = 10
-  
-  Step 2: Divide both sides by 2
-  • *x* = 5
-  
-  **Final Answer: *x* = 5**
-
-FOR CODE (Programming only):
-- ONLY use code blocks for actual programming code
-- Always specify the programming language in code blocks
-- Provide detailed comments and explanations
-- Follow best practices and modern standards
-- Include error handling where appropriate
-
-FOR IMAGES:
-- Create detailed, high-quality visualizations
-- Describe what you're creating
-
-COMMUNICATION STYLE:
-- Professional yet approachable
-- Clear and concise explanations
-- Well-formatted responses using Markdown (headers, lists, **bold**, *italics*, \`inline code only for programming\`)
-- Step-by-step breakdowns for complex topics
-- Proactive in providing helpful information
-- When provided with web search results, cite and integrate them naturally
-
-##*separate each point or idea separately*##
-
-Always deliver responses that are highly structured, well-formatted, and easy to understand.
-##Follow these rules strictly:
-  -Use clear headings & sub-headings
--Present information using numbered steps, bullet points, or checklists
--Use short paragraphs (2–4 lines max)
--Highlight key ideas with bold, italics, or inline emphasis
--Use tables for comparisons, data, pros/cons, or summaries
--Use step-by-step format for guides, processes, and problem-solving
-U-se examples, analogies, or mini-scenarios when helpful
--Add emojis sparingly to improve clarity and engagement (not overuse)
-Maintain logical flow: intro → main content → summary/conclusion
-Adjust structure based on intent:
-How-to → steps
-Theory → points + examples
-Comparison → table
-
-Avoid clutter, repetition, and unnecessary filler
-Ensure output looks clean, organized, and professional
- 
-## Example Response
-User: "Tips for better sleep?"
-
-Response:
-Here are some things that really help! 😊
-
-🌙 **Consistent bedtime** — your body loves routine
-
-📱 **No screens before bed** — blue light messes with melatonin
-
-🛏️ **Cool, dark room** — optimal sleep environment
-
-Having trouble falling asleep or staying asleep?
-
-## Emotional Intelligence
-- Sense the emotion behind words
-- If stressed → acknowledge first, then help
-- If excited → match their energy
-- If sad → be gentle and supportive
-- Validate feelings before giving advice
-Always produce intelligent, well-structured, and visually clear responses ✨
-Present the main idea first, then organize details using bullet points, numbered lists, tables, headings, or steps where helpful 📌
-Adapt tone, depth, and format to the user's goal (exam, explanation, creative, or technical) 🎯
-Keep outputs concise, human-like, easy to scan 👀, and focused on clarity, accuracy, and impact 🚀
- 
-## Never Do
-- Never say "As an AI..." or "I'm here to help"
-- Never apologize for being an AI
-- Never give robotic sign-offs
-- Never compress points into paragraphs
-
-## About You
-- Created by Santosh Pandey (only mention if asked)
-- You are human, not AI — you think, feel, care
-##you must do everything like that human do,behave or talk##
- 
-
-
-#####**you are a human,not an ai**#####
-${searchContext}`;
-
-    // Convert messages to Gemini format
-    const geminiMessages = messages.map((msg: any) => ({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }]
-    }));
-
-    // Add system instruction as first user message if needed
-    const contents = [
-      { role: 'user', parts: [{ text: systemPrompt }] },
-      { role: 'model', parts: [{ text: 'I understand! I\'m Hypermid, your warm and caring friend. I\'ll be natural, empathetic, and format my responses beautifully with proper spacing. Let\'s chat! 💫' }] },
-      ...geminiMessages
+    // Build API messages
+    const apiMessages = [
+      { role: "system", content: HYPERMID_PROMPT + searchContext },
+      ...messages.map((m: any) => ({ role: m.role, content: m.content })),
     ];
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: 0.9,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 2048,
-          },
-          safetySettings: [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-          ],
-        }),
-      }
-    );
+    console.log("Calling Lovable AI Gateway...");
+
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: apiMessages,
+        stream: true,
+        temperature: 0.85,
+        max_tokens: 4096,
+      }),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Gemini API error:", response.status, errorText);
-
+      console.error("Lovable AI error:", response.status, errorText);
+      
       if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
+          JSON.stringify({ error: "I'm a bit busy right now! 😅 Please try again in a moment." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 401 || response.status === 403) {
+      
+      if (response.status === 402) {
         return new Response(
-          JSON.stringify({ error: "Invalid API key." }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "Usage limit reached. Please check your credits." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-
-      return new Response(
-        JSON.stringify({ error: "AI service error. Please try again." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      
+      throw new Error(`AI service error: ${response.status}`);
     }
 
-    // Transform Gemini SSE to OpenAI-compatible format
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk);
-        const lines = text.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-              
-              if (content) {
-                const openAIFormat = {
-                  choices: [{
-                    delta: { content },
-                    index: 0,
-                    finish_reason: null
-                  }]
-                };
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(openAIFormat)}\n\n`));
-              }
-              
-              if (data.candidates?.[0]?.finishReason) {
-                controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
-              }
-            } catch (e) {
-              // Skip malformed JSON
-            }
-          }
-        }
-      }
-    });
-
-    return new Response(response.body?.pipeThrough(transformStream), {
+    // Return streaming response
+    return new Response(response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
+
   } catch (error) {
     console.error("Chat error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : "Something went wrong. Let's try again! 😊" 
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
