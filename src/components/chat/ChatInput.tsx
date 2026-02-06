@@ -35,38 +35,63 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
     }
   }, [message]);
 
-  // Setup speech recognition
+  // Setup speech recognition with improved handling
   useEffect(() => {
     const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (SpeechRecognitionAPI) {
       setHasVoiceSupport(true);
-      recognitionRef.current = new SpeechRecognitionAPI();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
+      const recognition = new SpeechRecognitionAPI();
+      recognitionRef.current = recognition;
+      
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = navigator.language || 'en-US';
+      recognition.maxAlternatives = 1;
 
-      recognitionRef.current.onresult = (event: any) => {
-        // Only process the last result to avoid duplicates
-        const result = event.results[event.results.length - 1];
-        const transcript = result[0].transcript.trim();
-        
-        if (result.isFinal && transcript !== lastTranscriptRef.current) {
-          lastTranscriptRef.current = transcript;
+      let finalTranscriptBuffer = '';
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript = transcript;
+          }
+        }
+
+        if (finalTranscript && finalTranscript !== lastTranscriptRef.current) {
+          lastTranscriptRef.current = finalTranscript;
+          finalTranscriptBuffer += finalTranscript;
           setMessage(prev => {
-            const newMsg = prev ? `${prev} ${transcript}` : transcript;
-            return newMsg;
+            const base = prev.replace(/\s*\[.*?\]\s*$/, ''); // Remove interim indicator
+            return base ? `${base} ${finalTranscript}`.trim() : finalTranscript.trim();
           });
         }
       };
 
-      recognitionRef.current.onerror = (event: any) => {
+      recognition.onerror = (event: any) => {
         console.log('Speech recognition error:', event.error);
-        setIsListening(false);
+        if (event.error !== 'no-speech') {
+          setIsListening(false);
+        }
       };
 
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
+      recognition.onend = () => {
+        // Auto-restart if still listening (for continuous recognition)
+        if (isListening && recognitionRef.current) {
+          try {
+            recognitionRef.current.start();
+          } catch (e) {
+            setIsListening(false);
+          }
+        } else {
+          setIsListening(false);
+        }
         lastTranscriptRef.current = '';
       };
     }
@@ -80,7 +105,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
         }
       }
     };
-  }, []);
+  }, [isListening]);
 
   const toggleVoice = () => {
     if (!recognitionRef.current) return;
