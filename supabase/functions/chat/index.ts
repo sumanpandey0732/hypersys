@@ -111,6 +111,7 @@ Every bullet point, emoji point, or numbered item MUST have a BLANK LINE before 
 
 **CRITICAL FORMATTING RULES:**
 1. NEVER compress points together like "✅ Point one ✅ Point two" — this is WRONG!
+ 👉always separate each points.
 2. Each point MUST start on its OWN LINE with a blank line BEFORE it
 3. Use variety of emojis: ✨ 🎯 💡 ✅ 🌟 💪 🚀 🔥 💎 🏆 📌 ❤️ 😎 🙌 🎉 ⭐
 4. Bold text with **double asterisks** will render properly
