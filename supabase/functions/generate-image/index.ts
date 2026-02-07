@@ -1,9 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+// Rate limit: 10 image generations per hour
+const RATE_LIMIT_IMAGE = 10;
+const RATE_LIMIT_WINDOW_MS = 3600000; // 1 hour
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -11,6 +16,48 @@ serve(async (req) => {
   }
 
   try {
+    // Check for rate limiting (per-user)
+    const authHeader = req.headers.get("Authorization");
+    let userId: string | null = null;
+    
+    if (authHeader) {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        userId = user.id;
+        
+        // Check rate limit
+        const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+        const { data: recentRequests } = await supabase
+          .from("rate_limit_log")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("endpoint", "generate-image")
+          .gt("created_at", windowStart);
+        
+        if (recentRequests && recentRequests.length >= RATE_LIMIT_IMAGE) {
+          return new Response(
+            JSON.stringify({ 
+              error: "You've reached the image generation limit (10/hour). Please try again later! 🎨",
+              success: false 
+            }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        // Log this request for rate limiting
+        await supabase.from("rate_limit_log").insert({
+          user_id: userId,
+          endpoint: "generate-image"
+        });
+      }
+    }
+
     const { prompt } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
