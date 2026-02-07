@@ -210,47 +210,92 @@ export default function Chat() {
         const decoder = new TextDecoder();
         let textBuffer = '';
         let fullContent = '';
+        let lastUpdateTime = Date.now();
+        const TIMEOUT_MS = 30000; // 30 second timeout for no data
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        const processStream = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) break;
+            
+            lastUpdateTime = Date.now();
+            textBuffer += decoder.decode(value, { stream: true });
 
-          textBuffer += decoder.decode(value, { stream: true });
+            // Process all complete lines in buffer
+            const lines = textBuffer.split('\n');
+            textBuffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-          let newlineIndex: number;
-          while ((newlineIndex = textBuffer.indexOf('\n')) !== -1) {
-            let line = textBuffer.slice(0, newlineIndex);
-            textBuffer = textBuffer.slice(newlineIndex + 1);
+            for (const rawLine of lines) {
+              let line = rawLine.trim();
+              if (line.endsWith('\r')) line = line.slice(0, -1);
+              
+              // Skip empty lines and comments
+              if (!line || line.startsWith(':')) continue;
+              
+              // Handle SSE data lines
+              if (line.startsWith('data: ')) {
+                const jsonStr = line.slice(6).trim();
+                if (jsonStr === '[DONE]') continue;
 
-            if (line.endsWith('\r')) line = line.slice(0, -1);
-            if (line.startsWith(':') || line.trim() === '') continue;
-            if (!line.startsWith('data: ')) continue;
-
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === '[DONE]') continue;
-
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const delta = parsed.choices?.[0]?.delta?.content;
-              if (delta) {
-                fullContent += delta;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessage.id ? { ...m, content: fullContent } : m
-                  )
-                );
+                try {
+                  const parsed = JSON.parse(jsonStr);
+                  const delta = parsed.choices?.[0]?.delta?.content;
+                  if (delta) {
+                    fullContent += delta;
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === assistantMessage.id ? { ...m, content: fullContent } : m
+                      )
+                    );
+                  }
+                } catch (parseError) {
+                  // Log parse errors for debugging but continue
+                  console.debug('JSON parse skip:', jsonStr.slice(0, 50));
+                }
               }
-            } catch {
-              // Incomplete JSON, skip
             }
+          }
+        };
+
+        // Run stream processing with timeout protection
+        await Promise.race([
+          processStream(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Stream timeout')), TIMEOUT_MS)
+          )
+        ]).catch((err) => {
+          console.warn('Stream issue:', err.message);
+        });
+
+        // Process any remaining buffer
+        if (textBuffer.trim()) {
+          const line = textBuffer.trim();
+          if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+            try {
+              const parsed = JSON.parse(line.slice(6));
+              const delta = parsed.choices?.[0]?.delta?.content;
+              if (delta) fullContent += delta;
+            } catch { /* ignore */ }
           }
         }
 
-        if (fullContent) {
-          await saveMessage(convId, 'assistant', fullContent);
+        if (fullContent.trim()) {
+          // Clean up any raw markdown artifacts
+          const cleanedContent = fullContent
+            .replace(/\\n/g, '\n')
+            .replace(/\\"/g, '"')
+            .trim();
+          
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessage.id ? { ...m, content: cleanedContent } : m
+            )
+          );
+          await saveMessage(convId, 'assistant', cleanedContent);
         } else {
-          // If no content was received, show a friendly error
-          const fallbackContent = "I'm here! 😊 Could you try asking again? Sometimes I need a moment to gather my thoughts.";
+          // If no content was received, show a friendly retry message
+          const fallbackContent = "Hmm, something went weird! 😅 Try sending that again bhai, I'm ready now! 🚀";
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMessage.id ? { ...m, content: fallbackContent } : m
