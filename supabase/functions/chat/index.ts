@@ -1,9 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+// Rate limit: 20 requests per minute for chat
+const RATE_LIMIT_CHAT = 20;
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 
 // Web search triggers
 const searchIndicators = [
@@ -216,6 +221,45 @@ serve(async (req) => {
   }
 
   try {
+    // Check for rate limiting (per-user)
+    const authHeader = req.headers.get("Authorization");
+    let userId: string | null = null;
+    
+    if (authHeader) {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        userId = user.id;
+        
+        // Check rate limit
+        const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+        const { data: recentRequests } = await supabase
+          .from("rate_limit_log")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("endpoint", "chat")
+          .gt("created_at", windowStart);
+        
+        if (recentRequests && recentRequests.length >= RATE_LIMIT_CHAT) {
+          return new Response(
+            JSON.stringify({ error: "Rate limit exceeded. Please wait a moment and try again! 🙏" }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        // Log this request for rate limiting
+        await supabase.from("rate_limit_log").insert({
+          user_id: userId,
+          endpoint: "chat"
+        });
+      }
+    }
+
     const { messages } = await req.json();
     
     const MISTRAL_API_KEY = Deno.env.get("MISTRAL_API_KEY");
