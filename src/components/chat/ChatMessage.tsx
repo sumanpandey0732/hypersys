@@ -278,54 +278,55 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
           {/* Message content */}
           <div className="w-full">
             {content ? (
-              <div className="prose prose-sm sm:prose-base prose-invert max-w-none">
+              <div className="prose prose-base sm:prose-lg prose-invert max-w-none">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
                     h1: ({ children }) => (
-                      <h1 className="text-lg sm:text-xl font-bold mb-3 mt-4 first:mt-0 text-foreground">
+                      <h1 className="text-2xl sm:text-3xl font-bold mb-4 mt-6 first:mt-0 text-foreground bg-gradient-to-r from-primary/20 to-transparent py-2 px-3 rounded-lg border-l-4 border-primary">
                         {children}
                       </h1>
                     ),
                     h2: ({ children }) => (
-                      <h2 className="text-base sm:text-lg font-bold mb-2 mt-3 first:mt-0 text-foreground">
+                      <h2 className="text-xl sm:text-2xl font-bold mb-3 mt-5 first:mt-0 text-foreground flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                         {children}
                       </h2>
                     ),
                     h3: ({ children }) => (
-                      <h3 className="text-sm sm:text-base font-semibold mb-2 mt-3 first:mt-0 text-foreground">
+                      <h3 className="text-lg sm:text-xl font-semibold mb-2 mt-4 first:mt-0 text-foreground/95">
                         {children}
                       </h3>
                     ),
                     p: ({ children }) => (
-                      <p className="text-sm sm:text-[15px] leading-[1.75] mb-3 last:mb-0 text-foreground/90">
+                      <p className="text-base sm:text-lg leading-[1.85] mb-4 last:mb-0 text-foreground/90">
                         {children}
                       </p>
                     ),
                     ul: ({ children }) => (
-                      <ul className="space-y-2 my-3 pl-0 list-none">
+                      <ul className="space-y-3 my-4 pl-0 list-none">
                         {children}
                       </ul>
                     ),
                     ol: ({ children }) => (
-                      <ol className="space-y-2 my-3 pl-0 list-none">
+                      <ol className="space-y-3 my-4 pl-0 list-none counter-reset-[item]">
                         {children}
                       </ol>
                     ),
                     li: ({ children }) => (
-                      <li className="flex items-start gap-2 text-sm sm:text-[15px] leading-relaxed text-foreground/90">
-                        <span className="flex-shrink-0 mt-2 w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
+                      <li className="flex items-start gap-3 text-base sm:text-lg leading-relaxed text-foreground/90 bg-secondary/30 rounded-xl p-3 border border-border/20 hover:bg-secondary/50 transition-colors">
+                        <span className="flex-shrink-0 mt-1.5 w-2.5 h-2.5 rounded-full bg-gradient-to-br from-primary to-primary/50 shadow-sm shadow-primary/30" />
                         <span className="flex-1">{children}</span>
                       </li>
                     ),
                     strong: ({ children }) => (
-                      <strong className="font-semibold text-foreground">{children}</strong>
+                      <strong className="font-bold text-foreground bg-primary/10 px-1.5 py-0.5 rounded">{children}</strong>
                     ),
                     em: ({ children }) => (
-                      <em className="italic text-foreground/80">{children}</em>
+                      <em className="italic text-primary/90">{children}</em>
                     ),
                     blockquote: ({ children }) => (
-                      <blockquote className="my-3 pl-3 py-1 border-l-2 border-primary/40 text-foreground/80 italic">
+                      <blockquote className="my-4 pl-4 py-3 border-l-4 border-primary/60 bg-primary/5 rounded-r-xl text-foreground/85 italic">
                         {children}
                       </blockquote>
                     ),
@@ -335,7 +336,7 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                       
                       if (isInline) {
                         return (
-                          <code className="px-1.5 py-0.5 rounded bg-secondary text-primary font-mono text-[0.85em]">
+                          <code className="px-2 py-1 rounded-lg bg-primary/15 text-primary font-mono text-[0.9em] border border-primary/20">
                             {children}
                           </code>
                         );
@@ -353,28 +354,28 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                         href={href} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-primary hover:underline"
+                        className="text-primary font-medium hover:underline decoration-primary/50 underline-offset-2 transition-all hover:text-primary/80"
                       >
                         {children}
                       </a>
                     ),
                     table: ({ children }) => (
-                      <div className="my-3 overflow-x-auto rounded-lg border border-border/40">
-                        <table className="w-full text-sm">{children}</table>
+                      <div className="my-4 overflow-x-auto rounded-xl border border-border/40 shadow-lg">
+                        <table className="w-full text-base">{children}</table>
                       </div>
                     ),
                     th: ({ children }) => (
-                      <th className="px-3 py-2 text-left font-semibold bg-secondary/50 border-b border-border/40 text-foreground">
+                      <th className="px-4 py-3 text-left font-bold bg-primary/10 border-b border-border/40 text-foreground">
                         {children}
                       </th>
                     ),
                     td: ({ children }) => (
-                      <td className="px-3 py-2 border-b border-border/20 text-foreground/80">
+                      <td className="px-4 py-3 border-b border-border/20 text-foreground/85">
                         {children}
                       </td>
                     ),
                     hr: () => (
-                      <hr className="my-4 border-0 h-px bg-border/30" />
+                      <hr className="my-6 border-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
                     ),
                   }}
                 >
