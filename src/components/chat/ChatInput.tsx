@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Sparkles, Mic, MicOff, Square } from 'lucide-react';
+import { Send, Sparkles, Mic, Square, Loader2 } from 'lucide-react';
+import { useElevenLabsSTT } from '@/hooks/useElevenLabsSTT';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -12,13 +13,11 @@ interface ChatInputProps {
 export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [hasVoiceSupport, setHasVoiceSupport] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<any>(null);
-  const lastTranscriptRef = useRef<string>('');
+  
+  const { startRecording, stopRecording, cancelRecording, isRecording, isProcessing } = useElevenLabsSTT();
 
-  // Auto-focus and open keyboard on mount (for mobile)
+  // Auto-focus on mount
   useEffect(() => {
     const timer = setTimeout(() => {
       if (textareaRef.current && !disabled) {
@@ -35,95 +34,28 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
     }
   }, [message]);
 
-  // Setup speech recognition with improved handling
-  useEffect(() => {
-    const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
-    if (SpeechRecognitionAPI) {
-      setHasVoiceSupport(true);
-      const recognition = new SpeechRecognitionAPI();
-      recognitionRef.current = recognition;
-      
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = navigator.language || 'en-US';
-      recognition.maxAlternatives = 1;
-
-      let finalTranscriptBuffer = '';
-
-      recognition.onresult = (event: any) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript;
-          } else {
-            interimTranscript = transcript;
-          }
+  const handleVoiceClick = async () => {
+    if (isRecording) {
+      try {
+        const transcript = await stopRecording();
+        if (transcript) {
+          setMessage(prev => (prev ? `${prev} ${transcript}` : transcript));
         }
-
-        if (finalTranscript && finalTranscript !== lastTranscriptRef.current) {
-          lastTranscriptRef.current = finalTranscript;
-          finalTranscriptBuffer += finalTranscript;
-          setMessage(prev => {
-            const base = prev.replace(/\s*\[.*?\]\s*$/, ''); // Remove interim indicator
-            return base ? `${base} ${finalTranscript}`.trim() : finalTranscript.trim();
-          });
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.log('Speech recognition error:', event.error);
-        if (event.error !== 'no-speech') {
-          setIsListening(false);
-        }
-      };
-
-      recognition.onend = () => {
-        // Auto-restart if still listening (for continuous recognition)
-        if (isListening && recognitionRef.current) {
-          try {
-            recognitionRef.current.start();
-          } catch (e) {
-            setIsListening(false);
-          }
-        } else {
-          setIsListening(false);
-        }
-        lastTranscriptRef.current = '';
-      };
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {
-          // Ignore
-        }
+      } catch (error) {
+        console.error("STT error:", error);
       }
-    };
-  }, [isListening]);
-
-  const toggleVoice = () => {
-    if (!recognitionRef.current) return;
-
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
     } else {
-      lastTranscriptRef.current = '';
-      recognitionRef.current.start();
-      setIsListening(true);
+      try {
+        await startRecording();
+      } catch (error) {
+        console.error("Failed to start recording:", error);
+      }
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !isLoading && !disabled) {
-      // Blur textarea to close mobile keyboard instantly
       textareaRef.current?.blur();
       onSend(message.trim());
       setMessage('');
@@ -146,11 +78,11 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
         {/* Futuristic rotating border container */}
         <div className="relative">
-          {/* Animated gradient border - rotating colors */}
+          {/* Animated gradient border */}
           <motion.div
             className="absolute -inset-[2px] rounded-2xl sm:rounded-3xl opacity-80"
             style={{
-              background: isFocused 
+              background: isFocused || isRecording
                 ? 'conic-gradient(from var(--angle), hsl(172 66% 50%), hsl(200 80% 50%), hsl(280 70% 50%), hsl(320 70% 50%), hsl(172 66% 50%))'
                 : 'conic-gradient(from var(--angle), hsl(172 66% 50% / 0.3), hsl(200 80% 50% / 0.3), hsl(172 66% 50% / 0.3))',
             }}
@@ -158,7 +90,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
               '--angle': ['0deg', '360deg'],
             } as never}
             transition={{
-              duration: isFocused ? 3 : 8,
+              duration: isFocused || isRecording ? 3 : 8,
               repeat: Infinity,
               ease: 'linear',
             }}
@@ -168,11 +100,13 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
           <motion.div
             className="absolute -inset-[3px] rounded-2xl sm:rounded-3xl blur-md"
             style={{
-              background: 'conic-gradient(from var(--angle), hsl(172 66% 50% / 0.4), hsl(200 80% 50% / 0.4), hsl(280 70% 50% / 0.4), hsl(320 70% 50% / 0.4), hsl(172 66% 50% / 0.4))',
+              background: isRecording 
+                ? 'conic-gradient(from var(--angle), hsl(0 72% 51% / 0.5), hsl(320 70% 50% / 0.5), hsl(0 72% 51% / 0.5))'
+                : 'conic-gradient(from var(--angle), hsl(172 66% 50% / 0.4), hsl(200 80% 50% / 0.4), hsl(280 70% 50% / 0.4), hsl(320 70% 50% / 0.4), hsl(172 66% 50% / 0.4))',
             }}
             animate={{
               '--angle': ['0deg', '360deg'],
-              opacity: isFocused ? [0.5, 0.8, 0.5] : [0.2, 0.3, 0.2],
+              opacity: isFocused || isRecording ? [0.5, 0.8, 0.5] : [0.2, 0.3, 0.2],
             } as never}
             transition={{
               '--angle': { duration: 4, repeat: Infinity, ease: 'linear' },
@@ -185,9 +119,11 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
             {/* Glass background */}
             <div className={`
               absolute inset-0 transition-all duration-500
-              ${isFocused 
-                ? 'bg-gradient-to-br from-secondary/90 via-secondary/70 to-primary/10' 
-                : 'bg-secondary/60'
+              ${isRecording 
+                ? 'bg-gradient-to-br from-destructive/20 via-destructive/10 to-secondary/70'
+                : isFocused 
+                  ? 'bg-gradient-to-br from-secondary/90 via-secondary/70 to-primary/10' 
+                  : 'bg-secondary/60'
               }
             `} />
             <div className="absolute inset-0 backdrop-blur-2xl" />
@@ -197,9 +133,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
               {/* AI Sparkle indicator */}
               <motion.div 
                 className="hidden sm:flex items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 mb-0.5 relative overflow-hidden"
-                animate={isLoading ? { 
-                  scale: [1, 1.08, 1],
-                } : {}}
+                animate={isLoading ? { scale: [1, 1.08, 1] } : {}}
                 transition={{ duration: 1.5, repeat: isLoading ? Infinity : 0, ease: "easeInOut" }}
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/25 via-primary/15 to-transparent" />
@@ -227,8 +161,8 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
                   onChange={(e) => setMessage(e.target.value)}
                   onFocus={() => setIsFocused(true)}
                   onBlur={() => setIsFocused(false)}
-                  placeholder="Ask Hypermid anything..."
-                  disabled={disabled}
+                  placeholder={isRecording ? "🎤 Listening..." : "Ask Hypermid anything..."}
+                  disabled={disabled || isRecording}
                   rows={1}
                   aria-label="Message input"
                   className="w-full bg-transparent border-0 resize-none focus:outline-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 py-2.5 sm:py-3 px-1 max-h-[150px] scrollbar-thin text-sm sm:text-[15px] leading-relaxed font-medium"
@@ -237,37 +171,40 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
 
               {/* Action buttons */}
               <div className="flex items-center gap-2 flex-shrink-0 mb-0.5">
-                {/* Voice button */}
-                {hasVoiceSupport && (
-                  <motion.button
-                    type="button"
-                    onClick={toggleVoice}
-                    className={`
-                      relative w-10 h-10 rounded-xl flex items-center justify-center
-                      transition-all duration-300 overflow-hidden
-                      ${isListening 
-                        ? 'bg-destructive/20 text-destructive border border-destructive/30' 
+                {/* Voice button - ElevenLabs powered */}
+                <motion.button
+                  type="button"
+                  onClick={handleVoiceClick}
+                  disabled={isProcessing}
+                  className={`
+                    relative w-10 h-10 rounded-xl flex items-center justify-center
+                    transition-all duration-300 overflow-hidden
+                    ${isRecording 
+                      ? 'bg-destructive/20 text-destructive border border-destructive/30' 
+                      : isProcessing
+                        ? 'bg-primary/20 text-primary border border-primary/30'
                         : 'bg-secondary/60 text-muted-foreground/60 hover:text-foreground border border-border/30 hover:border-primary/30'
-                      }
-                    `}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    aria-label={isListening ? "Stop listening" : "Start voice input"}
-                  >
-                    {isListening ? (
-                      <>
-                        <motion.div
-                          className="absolute inset-0 bg-destructive/20"
-                          animate={{ opacity: [0.3, 0.6, 0.3] }}
-                          transition={{ duration: 1, repeat: Infinity }}
-                        />
-                        <MicOff className="w-[18px] h-[18px] relative z-10" />
-                      </>
-                    ) : (
-                      <Mic className="w-[18px] h-[18px]" />
-                    )}
-                  </motion.button>
-                )}
+                    }
+                  `}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  aria-label={isRecording ? "Stop recording" : "Start voice input"}
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-[18px] h-[18px] animate-spin" />
+                  ) : isRecording ? (
+                    <>
+                      <motion.div
+                        className="absolute inset-0 bg-destructive/20"
+                        animate={{ opacity: [0.3, 0.6, 0.3] }}
+                        transition={{ duration: 1, repeat: Infinity }}
+                      />
+                      <Square className="w-4 h-4 relative z-10 fill-current" />
+                    </>
+                  ) : (
+                    <Mic className="w-[18px] h-[18px]" />
+                  )}
+                </motion.button>
 
                 {/* Send/Stop button */}
                 <AnimatePresence mode="wait">
@@ -306,7 +243,6 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
                       whileHover={canSend ? { scale: 1.08, y: -2 } : {}}
                       whileTap={canSend ? { scale: 0.92 } : {}}
                     >
-                      {/* Animated shine */}
                       {canSend && (
                         <motion.div 
                           className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/20 to-transparent"
@@ -315,9 +251,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
                           transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 2 }}
                         />
                       )}
-                      
                       <div className={`absolute inset-0 rounded-xl border ${canSend ? 'border-primary/50' : 'border-border/20'}`} />
-                      
                       <Send className="w-[18px] h-[18px] relative z-10" />
                     </motion.button>
                   )}

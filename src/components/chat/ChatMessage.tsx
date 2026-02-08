@@ -1,10 +1,11 @@
 import { motion } from 'framer-motion';
-import { Sparkles, Copy, Check, Volume2, VolumeX } from 'lucide-react';
+import { Sparkles, Copy, Check, Volume2, VolumeX, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { useState, useRef } from 'react';
+import { useState } from 'react';
+import { useElevenLabsTTS } from '@/hooks/useElevenLabsTTS';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -22,29 +23,29 @@ function CodeBlock({ language, children }: { language: string; children: string 
   };
 
   return (
-    <div className="relative group my-4 rounded-xl overflow-hidden border border-border/40 bg-card">
+    <div className="relative group my-5 rounded-2xl overflow-hidden border border-border/40 bg-card shadow-xl">
       {/* macOS-style header */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-secondary/80 border-b border-border/30">
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-secondary/90 to-secondary/70 border-b border-border/30">
         <div className="flex items-center gap-2">
           <div className="flex gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-destructive/80" />
-            <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-            <div className="w-3 h-3 rounded-full bg-green-500/80" />
+            <div className="w-3 h-3 rounded-full bg-destructive/80 shadow-inner" />
+            <div className="w-3 h-3 rounded-full bg-yellow-500/80 shadow-inner" />
+            <div className="w-3 h-3 rounded-full bg-green-500/80 shadow-inner" />
           </div>
-          <span className="text-xs text-muted-foreground/60 font-mono ml-2">{language || 'code'}</span>
+          <span className="text-xs text-muted-foreground/70 font-mono ml-2 uppercase tracking-wider">{language || 'code'}</span>
         </div>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-background/50 hover:bg-background text-xs text-muted-foreground hover:text-foreground transition-all duration-200"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background/60 hover:bg-background text-xs text-muted-foreground hover:text-foreground transition-all duration-200 border border-border/20"
         >
           {copied ? (
             <>
-              <Check className="w-3 h-3 text-primary" />
-              <span className="text-primary">Copied!</span>
+              <Check className="w-3.5 h-3.5 text-primary" />
+              <span className="text-primary font-medium">Copied!</span>
             </>
           ) : (
             <>
-              <Copy className="w-3 h-3" />
+              <Copy className="w-3.5 h-3.5" />
               <span>Copy</span>
             </>
           )}
@@ -56,10 +57,10 @@ function CodeBlock({ language, children }: { language: string; children: string 
           style={oneDark}
           customStyle={{
             margin: 0,
-            padding: '1rem 1.25rem',
+            padding: '1.25rem 1.5rem',
             background: 'transparent',
-            fontSize: '0.85rem',
-            lineHeight: '1.6',
+            fontSize: '0.875rem',
+            lineHeight: '1.7',
           }}
           showLineNumbers={children.split('\n').length > 3}
           lineNumberStyle={{ opacity: 0.4, minWidth: '2.5em' }}
@@ -82,7 +83,8 @@ function formatAssistantContent(raw: string) {
     '🌟', '⚡', '🎉', '👍', '💯', '🔑', '📝', '💻', '🎨', '🌈', '☀️', '🌺', '🍀', '🎁', '💎', 
     '🏆', '🥇', '✔️', '❌', '⚠️', '💬', '🤔', '😊', '😎', '🙌', '👏', '☑️', '🤗', '💖', '🎶',
     '📚', '🧠', '💼', '🌍', '🔮', '🎭', '🎪', '🎢', '🎡', '🎠', '🏠', '🏡', '🏢', '🌸', '🌻',
-    '🌼', '🌷', '🌹', '🍎', '🍊', '🍋', '🍇', '🍓', '🥑', '🥕', '🌽', '🥦', '🧩', '🎮', '🎲'
+    '🌼', '🌷', '🌹', '🍎', '🍊', '🍋', '🍇', '🍓', '🥑', '🥕', '🌽', '🥦', '🧩', '🎮', '🎲',
+    '👉', '👆', '👇', '👈', '🔹', '🔸', '▶️', '⬛', '⬜', '🟢', '🔵', '🟡', '🟠', '🔴', '🟣'
   ];
   
   // Force double line breaks before emoji bullets
@@ -91,7 +93,7 @@ function formatAssistantContent(raw: string) {
     // Emoji followed by bold text
     text = text.replace(new RegExp(`([^\\n])\\s*(${escapedEmoji})\\s*\\*\\*`, 'g'), '$1\n\n$2 **');
     // Emoji followed by regular text
-    text = text.replace(new RegExp(`([^\\n])\\s*(${escapedEmoji})\\s+([^*])`, 'g'), '$1\n\n$2 $3');
+    text = text.replace(new RegExp(`([^\\n])\\s*(${escapedEmoji})\\s+([^*\\n])`, 'g'), '$1\n\n$2 $3');
     // Emoji at start of a cramped line
     text = text.replace(new RegExp(`\\n(${escapedEmoji})\\s*\\*\\*`, 'g'), '\n\n$1 **');
   });
@@ -122,8 +124,7 @@ function formatAssistantContent(raw: string) {
 export default function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
   const isUser = role === 'user';
   const [copiedAll, setCopiedAll] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const { speak, stop, isSpeaking, isLoading: isTTSLoading } = useElevenLabsTTS();
 
   const assistantContent = isUser ? content : formatAssistantContent(content);
 
@@ -138,72 +139,10 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
     if (!assistantContent) return;
     
     if (isSpeaking) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-      return;
-    }
-
-    // Clean text for speech - remove markdown formatting
-    const cleanText = assistantContent
-      .replace(/\*\*/g, '') // Remove bold
-      .replace(/\*/g, '')   // Remove italics
-      .replace(/`/g, '')    // Remove code blocks
-      .replace(/#{1,6}\s/g, '') // Remove headers
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
-      .replace(/!\[.*?\]\(.*?\)/g, '') // Remove images
-      .replace(/[-•►→➤✨🎯💡✅🌟⭐💪🚀📌❤️💫⚡🎉👍💯🔑📝💻🎨🌈☀️💎🏆🤔😊😎🙌👏🤗💖]/g, '') // Remove bullets/emojis
-      .replace(/\n{2,}/g, '. ') // Convert double newlines to pauses
-      .replace(/\n/g, ' ')
-      .trim();
-
-    // Create utterance with optimized settings
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = 0.95; // Slightly slower for clarity
-    utterance.pitch = 1.05; // Slightly higher for friendliness
-    utterance.volume = 1.0;
-    
-    // Wait for voices to load then select best one
-    const selectVoice = () => {
-      const voices = window.speechSynthesis.getVoices();
-      
-      // Priority order for natural-sounding voices
-      const voicePreferences = [
-        'Google UK English Female',
-        'Google US English',
-        'Samantha',
-        'Microsoft Zira',
-        'Karen',
-        'Moira',
-        'Tessa',
-      ];
-      
-      let selectedVoice = voices.find(v => 
-        voicePreferences.some(pref => v.name.includes(pref))
-      );
-      
-      // Fallback to any English voice
-      if (!selectedVoice) {
-        selectedVoice = voices.find(v => v.lang.startsWith('en'));
-      }
-      
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-      }
-    };
-
-    // Try to select voice immediately or wait for voices to load
-    if (window.speechSynthesis.getVoices().length > 0) {
-      selectVoice();
+      stop();
     } else {
-      window.speechSynthesis.onvoiceschanged = selectVoice;
+      speak(assistantContent);
     }
-
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    
-    speechRef.current = utterance;
-    setIsSpeaking(true);
-    window.speechSynthesis.speak(utterance);
   };
 
   return (
@@ -214,42 +153,47 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
       className={`w-full ${isUser ? 'flex justify-end' : ''}`}
     >
       {isUser ? (
-        // User message - right aligned, compact bubble
+        // User message - right aligned, premium bubble
         <div className="max-w-[85%] sm:max-w-[75%]">
-          <div className="bg-primary/15 border border-primary/25 rounded-2xl rounded-br-md px-4 py-3">
-            <p className="text-sm sm:text-[15px] leading-relaxed text-foreground">
+          <div className="bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 border border-primary/30 rounded-2xl rounded-br-md px-5 py-3.5 shadow-lg shadow-primary/10">
+            <p className="text-sm sm:text-[15px] leading-relaxed text-foreground font-medium">
               {content}
             </p>
           </div>
         </div>
       ) : (
-        // AI message - full width, clean design
+        // AI message - full width, premium design
         <div className="w-full">
           {/* AI indicator */}
-          <div className="flex items-center gap-2 mb-2 justify-between">
-            <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-primary/20 flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 text-primary" />
-            </div>
-            <span className="text-xs font-medium text-primary/70">Hypermid</span>
+          <div className="flex items-center gap-2 mb-3 justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center border border-primary/20 shadow-lg shadow-primary/20">
+                <Sparkles className="w-4 h-4 text-primary" />
+              </div>
+              <span className="text-sm font-semibold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">Hypermid</span>
             </div>
 
-            <div className="flex items-center gap-1.5">
-              {/* Speak button */}
+            <div className="flex items-center gap-2">
+              {/* Speak button - ElevenLabs powered */}
               <button
                 type="button"
                 onClick={handleSpeak}
-                className={`flex items-center justify-center w-7 h-7 rounded-md transition-all duration-200 border ${
+                disabled={isTTSLoading}
+                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200 border ${
                   isSpeaking 
-                    ? 'bg-primary/20 text-primary border-primary/30' 
-                    : 'bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border-border/30'
+                    ? 'bg-primary/20 text-primary border-primary/30 shadow-lg shadow-primary/20' 
+                    : isTTSLoading
+                      ? 'bg-primary/10 text-primary border-primary/20'
+                      : 'bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border-border/30 hover:border-primary/30'
                 }`}
                 aria-label={isSpeaking ? "Stop speaking" : "Read aloud"}
               >
-                {isSpeaking ? (
-                  <VolumeX className="w-3.5 h-3.5" />
+                {isTTSLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isSpeaking ? (
+                  <VolumeX className="w-4 h-4" />
                 ) : (
-                  <Volume2 className="w-3.5 h-3.5" />
+                  <Volume2 className="w-4 h-4" />
                 )}
               </button>
 
@@ -257,17 +201,17 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
               <button
                 type="button"
                 onClick={handleCopyAll}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 hover:bg-secondary text-xs text-muted-foreground hover:text-foreground transition-all duration-200 border border-border/30"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/50 hover:bg-secondary text-xs text-muted-foreground hover:text-foreground transition-all duration-200 border border-border/30 hover:border-primary/30"
                 aria-label="Copy answer"
               >
                 {copiedAll ? (
                   <>
-                    <Check className="w-3 h-3 text-primary" />
-                    <span className="text-primary">Copied</span>
+                    <Check className="w-3.5 h-3.5 text-primary" />
+                    <span className="text-primary font-medium">Copied</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="w-3 h-3" />
+                    <Copy className="w-3.5 h-3.5" />
                     <span>Copy</span>
                   </>
                 )}
@@ -278,55 +222,55 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
           {/* Message content */}
           <div className="w-full">
             {content ? (
-              <div className="prose prose-base sm:prose-lg prose-invert max-w-none">
+              <div className="prose prose-lg sm:prose-xl prose-invert max-w-none">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
                     h1: ({ children }) => (
-                      <h1 className="text-2xl sm:text-3xl font-bold mb-4 mt-6 first:mt-0 text-foreground bg-gradient-to-r from-primary/20 to-transparent py-2 px-3 rounded-lg border-l-4 border-primary">
+                      <h1 className="text-3xl sm:text-4xl font-bold mb-5 mt-8 first:mt-0 text-foreground bg-gradient-to-r from-primary/25 via-primary/15 to-transparent py-3 px-4 rounded-xl border-l-4 border-primary shadow-lg">
                         {children}
                       </h1>
                     ),
                     h2: ({ children }) => (
-                      <h2 className="text-xl sm:text-2xl font-bold mb-3 mt-5 first:mt-0 text-foreground flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      <h2 className="text-2xl sm:text-3xl font-bold mb-4 mt-7 first:mt-0 text-foreground flex items-center gap-3">
+                        <span className="w-3 h-3 rounded-full bg-gradient-to-r from-primary to-primary/50 animate-pulse shadow-lg shadow-primary/30" />
                         {children}
                       </h2>
                     ),
                     h3: ({ children }) => (
-                      <h3 className="text-lg sm:text-xl font-semibold mb-2 mt-4 first:mt-0 text-foreground/95">
+                      <h3 className="text-xl sm:text-2xl font-semibold mb-3 mt-6 first:mt-0 text-foreground/95 border-b border-border/30 pb-2">
                         {children}
                       </h3>
                     ),
                     p: ({ children }) => (
-                      <p className="text-base sm:text-lg leading-[1.85] mb-4 last:mb-0 text-foreground/90">
+                      <p className="text-base sm:text-lg leading-[1.9] mb-5 last:mb-0 text-foreground/90">
                         {children}
                       </p>
                     ),
                     ul: ({ children }) => (
-                      <ul className="space-y-3 my-4 pl-0 list-none">
+                      <ul className="space-y-4 my-5 pl-0 list-none">
                         {children}
                       </ul>
                     ),
                     ol: ({ children }) => (
-                      <ol className="space-y-3 my-4 pl-0 list-none counter-reset-[item]">
+                      <ol className="space-y-4 my-5 pl-0 list-none counter-reset-[item]">
                         {children}
                       </ol>
                     ),
                     li: ({ children }) => (
-                      <li className="flex items-start gap-3 text-base sm:text-lg leading-relaxed text-foreground/90 bg-secondary/30 rounded-xl p-3 border border-border/20 hover:bg-secondary/50 transition-colors">
-                        <span className="flex-shrink-0 mt-1.5 w-2.5 h-2.5 rounded-full bg-gradient-to-br from-primary to-primary/50 shadow-sm shadow-primary/30" />
+                      <li className="flex items-start gap-4 text-base sm:text-lg leading-relaxed text-foreground/90 bg-gradient-to-r from-secondary/50 via-secondary/30 to-transparent rounded-xl p-4 border border-border/20 hover:border-primary/30 hover:bg-secondary/60 transition-all duration-300 shadow-sm hover:shadow-md">
+                        <span className="flex-shrink-0 mt-2 w-3 h-3 rounded-full bg-gradient-to-br from-primary via-primary/70 to-primary/40 shadow-lg shadow-primary/40 animate-pulse" />
                         <span className="flex-1">{children}</span>
                       </li>
                     ),
                     strong: ({ children }) => (
-                      <strong className="font-bold text-foreground bg-primary/10 px-1.5 py-0.5 rounded">{children}</strong>
+                      <strong className="font-bold text-foreground bg-gradient-to-r from-primary/20 to-primary/10 px-2 py-0.5 rounded-md border border-primary/20">{children}</strong>
                     ),
                     em: ({ children }) => (
-                      <em className="italic text-primary/90">{children}</em>
+                      <em className="italic text-primary/90 font-medium">{children}</em>
                     ),
                     blockquote: ({ children }) => (
-                      <blockquote className="my-4 pl-4 py-3 border-l-4 border-primary/60 bg-primary/5 rounded-r-xl text-foreground/85 italic">
+                      <blockquote className="my-5 pl-5 py-4 border-l-4 border-gradient-to-b from-primary to-primary/50 bg-gradient-to-r from-primary/10 to-transparent rounded-r-xl text-foreground/85 italic shadow-lg">
                         {children}
                       </blockquote>
                     ),
@@ -336,7 +280,7 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                       
                       if (isInline) {
                         return (
-                          <code className="px-2 py-1 rounded-lg bg-primary/15 text-primary font-mono text-[0.9em] border border-primary/20">
+                          <code className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-primary/20 to-primary/10 text-primary font-mono text-[0.9em] border border-primary/25 shadow-sm">
                             {children}
                           </code>
                         );
@@ -354,28 +298,33 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                         href={href} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-primary font-medium hover:underline decoration-primary/50 underline-offset-2 transition-all hover:text-primary/80"
+                        className="text-primary font-semibold hover:underline decoration-primary/50 underline-offset-4 transition-all hover:text-primary/80 hover:decoration-primary"
                       >
                         {children}
                       </a>
                     ),
                     table: ({ children }) => (
-                      <div className="my-4 overflow-x-auto rounded-xl border border-border/40 shadow-lg">
+                      <div className="my-5 overflow-x-auto rounded-2xl border border-border/40 shadow-xl">
                         <table className="w-full text-base">{children}</table>
                       </div>
                     ),
                     th: ({ children }) => (
-                      <th className="px-4 py-3 text-left font-bold bg-primary/10 border-b border-border/40 text-foreground">
+                      <th className="px-5 py-4 text-left font-bold bg-gradient-to-r from-primary/15 to-primary/5 border-b border-border/40 text-foreground">
                         {children}
                       </th>
                     ),
                     td: ({ children }) => (
-                      <td className="px-4 py-3 border-b border-border/20 text-foreground/85">
+                      <td className="px-5 py-4 border-b border-border/20 text-foreground/85">
                         {children}
                       </td>
                     ),
                     hr: () => (
-                      <hr className="my-6 border-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+                      <hr className="my-8 border-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+                    ),
+                    img: ({ src, alt }) => (
+                      <div className="my-5 rounded-2xl overflow-hidden border border-border/30 shadow-2xl">
+                        <img src={src} alt={alt || ''} className="w-full h-auto" />
+                      </div>
                     ),
                   }}
                 >
@@ -383,32 +332,32 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                 </ReactMarkdown>
               </div>
             ) : isStreaming ? (
-              <div className="flex items-center gap-2 py-1">
-                <div className="flex gap-1">
+              <div className="flex items-center gap-3 py-2">
+                <div className="flex gap-1.5">
                   {[0, 1, 2].map((i) => (
                     <motion.span 
                       key={i}
-                      className="w-1.5 h-1.5 rounded-full bg-primary"
+                      className="w-2 h-2 rounded-full bg-primary"
                       animate={{ 
-                        scale: [1, 1.3, 1],
+                        scale: [1, 1.4, 1],
                         opacity: [0.5, 1, 0.5]
                       }}
                       transition={{ 
-                        duration: 0.6,
+                        duration: 0.7,
                         repeat: Infinity,
-                        delay: i * 0.1,
+                        delay: i * 0.15,
                       }}
                     />
                   ))}
                 </div>
-                <span className="text-sm text-muted-foreground">Thinking...</span>
+                <span className="text-sm text-primary/80 font-medium">Thinking...</span>
               </div>
             ) : null}
 
             {/* Streaming cursor */}
             {isStreaming && content && (
               <motion.span
-                className="inline-block w-0.5 h-4 bg-primary ml-0.5 align-middle"
+                className="inline-block w-0.5 h-5 bg-primary ml-0.5 align-middle rounded-full"
                 animate={{ opacity: [1, 0.3, 1] }}
                 transition={{ duration: 0.6, repeat: Infinity }}
               />
