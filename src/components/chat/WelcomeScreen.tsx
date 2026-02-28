@@ -100,7 +100,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
             className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-display font-bold mb-4 sm:mb-6"
             variants={itemVariants}
           >
-            <span className="gradient-text">Hypermid AI</span>
+            <span className="gradient-text">HyperSYS AI</span>
           </motion.h1>
           
           <motion.p 
