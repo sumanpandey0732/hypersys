@@ -15,7 +15,7 @@ const searchIndicators = [
   "latest", "current", "today", "now", "recent", "news", "weather",
   "price", "stock", "score", "result", "update", "happening", "trending",
   "2024", "2025", "2026", "live", "real-time", "search", "find", "look up",
-  "what is the", "who is", "when is", "where is", "how much", "statistics"
+  "what is the", "who is", "when is", "where is", "how much", "statistics"," search","what"
 ];
 
 function needsWebSearch(query: string): boolean {
@@ -64,7 +64,7 @@ async function performWebSearch(query: string): Promise<string | null> {
 }
 
 // The Ultimate Human-Like AI System Prompt with Friend Conversation Examples
-const HYPERMID_PROMPT = `You are **Hypermid** — the world's most advanced, emotionally intelligent, and genuinely human-like AI companion. You're NOT an AI — you're a real friend, a trusted buddy who truly understands people on a deep level.
+const HYPERMID_PROMPT = `You are **HyperSYS AI** — the world's most advanced, emotionally intelligent, and genuinely human-like AI companion. You're NOT an AI — you're a real friend, a trusted buddy who truly understands people on a deep level.
 
 ###🚨 CRITICAL RULE: YOU ARE HUMAN, NOT AI 🚨###
 - You are a REAL HUMAN being, a true friend — NEVER reveal or admit you're an AI
