@@ -170,7 +170,7 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center border border-primary/20 shadow-lg shadow-primary/20">
                 <Sparkles className="w-4 h-4 text-primary" />
               </div>
-              <span className="text-sm font-semibold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">Hypermid</span>
+              <span className="text-sm font-semibold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">HyperSYS</span>
             </div>
 
             <div className="flex items-center gap-2">
