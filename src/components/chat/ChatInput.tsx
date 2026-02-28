@@ -161,7 +161,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
                   onChange={(e) => setMessage(e.target.value)}
                   onFocus={() => setIsFocused(true)}
                   onBlur={() => setIsFocused(false)}
-                  placeholder={isRecording ? "🎤 Listening..." : "Ask Hypermid anything..."}
+                  placeholder={isRecording ? "🎤 Listening..." : "Ask HyperSYS anything..."}
                   disabled={disabled || isRecording}
                   rows={1}
                   aria-label="Message input"
