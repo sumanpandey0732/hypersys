@@ -32,7 +32,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   return (
     <section 
       className="flex-1 flex items-center justify-center p-4 sm:p-6 md:p-8 min-h-[calc(100dvh-12rem)]"
-      aria-label="Welcome to Hypermid AI"
+      aria-label="Welcome to HyperSYS AI"
     >
       <motion.div 
         className="max-w-2xl w-full text-center"
