@@ -24,153 +24,95 @@ interface Conversation {
 }
 
 export default function Chat() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-
-  // Scroll refs
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // Abort controller for stopping generation
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Load conversations
   const loadConversations = useCallback(async () => {
     if (!user) return;
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('conversations')
       .select('*')
       .order('updated_at', { ascending: false });
-
-    if (error) {
-      console.error('Error loading conversations:', error);
-      return;
-    }
     setConversations(data || []);
   }, [user]);
 
-  useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
+  useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // Load messages for active conversation
   const loadMessages = useCallback(async () => {
-    if (!activeConversationId) {
-      setMessages([]);
-      return;
-    }
-
-    const { data, error } = await supabase
+    if (!activeConversationId) { setMessages([]); return; }
+    const { data } = await supabase
       .from('messages')
       .select('*')
       .eq('conversation_id', activeConversationId)
       .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error loading messages:', error);
-      return;
-    }
-
-    setMessages(
-      data?.map((m) => ({
-        id: m.id,
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })) || []
-    );
+    setMessages(data?.map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })) || []);
   }, [activeConversationId]);
 
-  useEffect(() => {
-    loadMessages();
-  }, [loadMessages]);
+  useEffect(() => { loadMessages(); }, [loadMessages]);
 
-  // Create new conversation
   const createConversation = async (firstMessage: string): Promise<string | null> => {
     if (!user) return null;
-
     const title = firstMessage.slice(0, 50) + (firstMessage.length > 50 ? '...' : '');
-
-    const { data, error } = await supabase
-      .from('conversations')
-      .insert({ user_id: user.id, title })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating conversation:', error);
-      toast.error('Failed to create conversation');
-      return null;
-    }
-
+    const { data, error } = await supabase.from('conversations').insert({ user_id: user.id, title }).select().single();
+    if (error) { toast.error('Failed to create conversation'); return null; }
     setConversations((prev) => [data, ...prev]);
     setActiveConversationId(data.id);
     return data.id;
   };
 
-  // Save message to database
   const saveMessage = async (conversationId: string, role: 'user' | 'assistant', content: string) => {
-    const { error } = await supabase
-      .from('messages')
-      .insert({ conversation_id: conversationId, role, content });
-
-    if (error) {
-      console.error('Error saving message:', error);
-    }
-
-    await supabase
-      .from('conversations')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', conversationId);
+    await supabase.from('messages').insert({ conversation_id: conversationId, role, content });
+    await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
   };
 
-  // Handle sending message
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
 
     let convId = activeConversationId;
+    const isAuthenticated = !!user && !isGuest;
 
-    if (!convId) {
+    if (!convId && isAuthenticated) {
       convId = await createConversation(content);
       if (!convId) return;
     }
 
     const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content };
-    setMessages((prev) => [...prev, userMessage]);
-    await saveMessage(convId, 'user', content);
+    const allMessages = [...messages, userMessage];
+    setMessages(allMessages);
+    
+    if (convId && isAuthenticated) await saveMessage(convId, 'user', content);
 
-    // Scroll to the new message
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
 
-    // Check if this is an image generation request
     const imageKeywords = ['generate image', 'create image', 'draw', 'make image', 'generate a picture', 'create a picture', 'generate picture', 'make a picture', 'imagine', 'visualize', 'paint', 'sketch'];
-    const isImageRequest = imageKeywords.some(keyword => content.toLowerCase().includes(keyword));
+    const isImageRequest = imageKeywords.some(kw => content.toLowerCase().includes(kw));
 
     const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     setMessages((prev) => [...prev, assistantMessage]);
     setIsLoading(true);
-
-    // Create abort controller for this request
     abortControllerRef.current = new AbortController();
 
     try {
-      const endpoint = isImageRequest 
+      const endpoint = isImageRequest
         ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-image`
         : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (user) headers['Authorization'] = `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`;
+      else headers['Authorization'] = `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`;
+
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
+        headers,
         body: JSON.stringify({
-          messages: [...messages, userMessage].map((m) => ({ role: m.role, content: m.content })),
+          messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
           prompt: content,
         }),
         signal: abortControllerRef.current.signal,
@@ -179,152 +121,92 @@ export default function Chat() {
       if (!response.ok) {
         const errorText = await response.text();
         let errorMsg = 'Failed to get response';
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMsg = errorJson.error || errorMsg;
-        } catch {
-          errorMsg = errorText || errorMsg;
-        }
+        try { errorMsg = JSON.parse(errorText).error || errorMsg; } catch {}
         throw new Error(errorMsg);
       }
 
-      // Handle image response differently
       if (isImageRequest) {
         const data = await response.json();
         if (data.imageUrl) {
           const imageContent = `Here's the image I created for you! ✨\n\n![Generated Image](${data.imageUrl})\n\n${data.message || ''}`;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMessage.id ? { ...m, content: imageContent, imageUrl: data.imageUrl } : m
-            )
-          );
-          await saveMessage(convId, 'assistant', imageContent);
+          setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: imageContent, imageUrl: data.imageUrl } : m));
+          if (convId && isAuthenticated) await saveMessage(convId, 'assistant', imageContent);
         } else {
           throw new Error(data.error || 'Failed to generate image');
         }
       } else {
-        // Handle streaming text response
         if (!response.body) throw new Error('No response body');
-
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let textBuffer = '';
         let fullContent = '';
-        let lastUpdateTime = Date.now();
-        const TIMEOUT_MS = 30000; // 30 second timeout for no data
 
-        const processStream = async () => {
-          while (true) {
-            const { done, value } = await reader.read();
-            
-            if (done) break;
-            
-            lastUpdateTime = Date.now();
-            textBuffer += decoder.decode(value, { stream: true });
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-            // Process all complete lines in buffer
-            const lines = textBuffer.split('\n');
-            textBuffer = lines.pop() || ''; // Keep incomplete line in buffer
+          textBuffer += decoder.decode(value, { stream: true });
+          const lines = textBuffer.split('\n');
+          textBuffer = lines.pop() || '';
 
-            for (const rawLine of lines) {
-              let line = rawLine.trim();
-              if (line.endsWith('\r')) line = line.slice(0, -1);
-              
-              // Skip empty lines and comments
-              if (!line || line.startsWith(':')) continue;
-              
-              // Handle SSE data lines
-              if (line.startsWith('data: ')) {
-                const jsonStr = line.slice(6).trim();
-                if (jsonStr === '[DONE]') continue;
-
-                try {
-                  const parsed = JSON.parse(jsonStr);
-                  const delta = parsed.choices?.[0]?.delta?.content;
-                  if (delta) {
-                    fullContent += delta;
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantMessage.id ? { ...m, content: fullContent } : m
-                      )
-                    );
-                  }
-                } catch (parseError) {
-                  // Log parse errors for debugging but continue
-                  console.debug('JSON parse skip:', jsonStr.slice(0, 50));
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line || line.startsWith(':')) continue;
+            if (line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim();
+              if (jsonStr === '[DONE]') continue;
+              try {
+                const parsed = JSON.parse(jsonStr);
+                const delta = parsed.choices?.[0]?.delta?.content;
+                if (delta) {
+                  fullContent += delta;
+                  setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: fullContent } : m));
                 }
+              } catch {
+                // skip unparseable chunks
               }
             }
           }
-        };
+        }
 
-        // Run stream processing with timeout protection
-        await Promise.race([
-          processStream(),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Stream timeout')), TIMEOUT_MS)
-          )
-        ]).catch((err) => {
-          console.warn('Stream issue:', err.message);
-        });
-
-        // Process any remaining buffer
+        // Process remaining buffer
         if (textBuffer.trim()) {
           const line = textBuffer.trim();
           if (line.startsWith('data: ') && line !== 'data: [DONE]') {
             try {
-              const parsed = JSON.parse(line.slice(6));
-              const delta = parsed.choices?.[0]?.delta?.content;
+              const delta = JSON.parse(line.slice(6)).choices?.[0]?.delta?.content;
               if (delta) fullContent += delta;
-            } catch { /* ignore */ }
+            } catch {}
           }
         }
 
-        if (fullContent.trim()) {
-          // Clean up any raw markdown artifacts
-          const cleanedContent = fullContent
-            .replace(/\\n/g, '\n')
-            .replace(/\\"/g, '"')
-            .trim();
-          
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMessage.id ? { ...m, content: cleanedContent } : m
-            )
-          );
-          await saveMessage(convId, 'assistant', cleanedContent);
+        // Clean raw artifacts
+        const cleaned = fullContent
+          .replace(/\\n/g, '\n')
+          .replace(/\\"/g, '"')
+          .replace(/\\t/g, '\t')
+          .replace(/\\\\/g, '\\')
+          .trim();
+
+        if (cleaned) {
+          setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: cleaned } : m));
+          if (convId && isAuthenticated) await saveMessage(convId, 'assistant', cleaned);
         } else {
-          // If no content was received, show a friendly retry message
-          const fallbackContent = "Hmm, something went weird! 😅 Try sending that again bhai, I'm ready now! 🚀";
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMessage.id ? { ...m, content: fallbackContent } : m
-            )
-          );
-          await saveMessage(convId, 'assistant', fallbackContent);
+          const fallback = "Hmm, let me try that again! 😅 Could you send your message once more?";
+          setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: fallback } : m));
+          if (convId && isAuthenticated) await saveMessage(convId, 'assistant', fallback);
         }
       }
 
-      loadConversations();
+      if (isAuthenticated) loadConversations();
     } catch (error) {
-      // Don't show error for user-initiated abort
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log('Request aborted by user');
-        // Keep partial content if any
-        const currentMsg = messages.find(m => m.id === assistantMessage.id);
-        if (currentMsg?.content) {
-          await saveMessage(convId, 'assistant', currentMsg.content);
-        }
+        // keep partial content
       } else {
         console.error('Chat error:', error);
         toast.error(error instanceof Error ? error.message : 'Failed to send message');
-        // Show friendly error message instead of removing
-        const errorContent = "Oops! Something went wrong on my end. 😅 Let's try that again!";
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessage.id ? { ...m, content: errorContent } : m
-          )
-        );
+        const errContent = "Oops! Something went wrong. 😅 Let's try again!";
+        setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: errContent } : m));
       }
     } finally {
       setIsLoading(false);
@@ -332,182 +214,109 @@ export default function Chat() {
     }
   };
 
-  // Stop generation
-  const handleStopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-  };
-
-  const handleNewConversation = () => {
-    setActiveConversationId(null);
-    setMessages([]);
-    setSidebarCollapsed(true);
-  };
+  const handleStopGeneration = () => { abortControllerRef.current?.abort(); };
+  const handleNewConversation = () => { setActiveConversationId(null); setMessages([]); setSidebarCollapsed(true); };
 
   const handleDeleteConversation = async (id: string) => {
     const { error } = await supabase.from('conversations').delete().eq('id', id);
-
-    if (error) {
-      toast.error('Failed to delete conversation');
-      return;
-    }
-
+    if (error) { toast.error('Failed to delete conversation'); return; }
     setConversations((prev) => prev.filter((c) => c.id !== id));
-    if (activeConversationId === id) {
-      setActiveConversationId(null);
-      setMessages([]);
-    }
+    if (activeConversationId === id) { setActiveConversationId(null); setMessages([]); }
   };
+
+  const isAuthenticated = !!user && !isGuest;
 
   return (
     <div className="h-screen h-[100dvh] flex w-full bg-background overflow-hidden">
-      <ChatSidebar
-        conversations={conversations}
-        activeConversationId={activeConversationId}
-        onSelectConversation={(id) => {
-          setActiveConversationId(id);
-          setSidebarCollapsed(true);
-        }}
-        onNewConversation={handleNewConversation}
-        onDeleteConversation={handleDeleteConversation}
-        isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+      {isAuthenticated && (
+        <ChatSidebar
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onSelectConversation={(id) => { setActiveConversationId(id); setSidebarCollapsed(true); }}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+      )}
 
-      {/* Main Chat Area */}
       <main className="flex-1 flex flex-col h-full relative w-full min-w-0">
         {/* Ambient background */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-primary/5" />
           <motion.div
             className="absolute -top-40 left-1/4 h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-primary/10 blur-[100px]"
-            animate={{
-              x: [0, 50, 0],
-              y: [0, -30, 0],
-              scale: [1, 1.1, 1],
-            }}
+            animate={{ x: [0, 50, 0], y: [0, -30, 0], scale: [1, 1.1, 1] }}
             transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
           />
           <motion.div
             className="absolute -bottom-40 right-1/4 h-72 w-72 sm:h-96 sm:w-96 rounded-full bg-accent/8 blur-[100px]"
-            animate={{
-              x: [0, -30, 0],
-              y: [0, 40, 0],
-              scale: [1, 1.15, 1],
-            }}
+            animate={{ x: [0, -30, 0], y: [0, 40, 0], scale: [1, 1.15, 1] }}
             transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut' }}
-          />
-          <motion.div
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-primary/5 blur-[150px]"
-            animate={{
-              scale: [1, 1.2, 1],
-              opacity: [0.3, 0.5, 0.3],
-            }}
-            transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
           />
         </div>
 
-        {/* Premium Header */}
+        {/* Header */}
         <header className="h-14 sm:h-16 border-b border-border/20 bg-background/60 backdrop-blur-2xl flex items-center px-3 sm:px-4 gap-3 sm:gap-4 relative z-20 flex-shrink-0">
-          {/* Subtle header gradient */}
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/[0.02] to-transparent pointer-events-none" />
           
-          <motion.button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="relative p-2.5 rounded-xl bg-secondary/40 hover:bg-secondary/70 border border-border/30 transition-all duration-200 group"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            aria-label="Toggle sidebar"
-          >
-            <Menu className="w-5 h-5 text-foreground/70 group-hover:text-foreground transition-colors" />
-          </motion.button>
+          {isAuthenticated && (
+            <motion.button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="relative p-2.5 rounded-xl bg-secondary/40 hover:bg-secondary/70 border border-border/30 transition-all duration-200 group"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Menu className="w-5 h-5 text-foreground/70 group-hover:text-foreground transition-colors" />
+            </motion.button>
+          )}
           
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <motion.div
-              className="hidden sm:flex w-10 h-10 rounded-xl items-center justify-center flex-shrink-0 relative overflow-hidden"
-              whileHover={{ scale: 1.1, rotate: 5 }}
-            >
+            <motion.div className="flex w-10 h-10 rounded-xl items-center justify-center flex-shrink-0 relative overflow-hidden" whileHover={{ scale: 1.1, rotate: 5 }}>
               <div className="absolute inset-0 bg-gradient-to-br from-primary/25 via-primary/15 to-primary/5" />
               <div className="absolute inset-0 border border-primary/25 rounded-xl" />
               <Sparkles className="w-[18px] h-[18px] text-primary relative z-10" />
             </motion.div>
-            
             <div className="min-w-0">
               <h1 className="font-display font-semibold text-base sm:text-lg truncate text-foreground/90">
-                {activeConversationId
-                  ? conversations.find((c) => c.id === activeConversationId)?.title || 'Chat'
-                  : 'New Chat'}
+                {activeConversationId ? conversations.find((c) => c.id === activeConversationId)?.title || 'Chat' : 'HyperSYS AI'}
               </h1>
               {isLoading && (
-                <motion.div
-                  className="flex items-center gap-2"
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                >
+                <motion.div className="flex items-center gap-2" initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
                   <div className="flex gap-1">
-                    <motion.span 
-                      className="w-1.5 h-1.5 rounded-full bg-primary"
-                      animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
-                      transition={{ duration: 1, repeat: Infinity, delay: 0 }}
-                    />
-                    <motion.span 
-                      className="w-1.5 h-1.5 rounded-full bg-primary"
-                      animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
-                      transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
-                    />
-                    <motion.span 
-                      className="w-1.5 h-1.5 rounded-full bg-primary"
-                      animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
-                      transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
-                    />
+                    {[0, 0.2, 0.4].map((d, i) => (
+                      <motion.span key={i} className="w-1.5 h-1.5 rounded-full bg-primary" animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity, delay: d }} />
+                    ))}
                   </div>
                   <span className="text-xs text-primary/80 font-medium">Generating...</span>
                 </motion.div>
+              )}
+              {isGuest && !isLoading && (
+                <span className="text-xs text-muted-foreground/60">Guest mode • <a href="/auth" className="text-primary hover:underline">Sign in to save chats</a></span>
               )}
             </div>
           </div>
         </header>
 
-        {/* Messages Area - No auto-scroll */}
-        <div
-          ref={scrollContainerRef}
-          className="relative z-10 flex-1 overflow-y-auto scrollbar-thin min-h-0"
-          style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
-        >
+        {/* Messages */}
+        <div ref={scrollContainerRef} className="relative z-10 flex-1 overflow-y-auto scrollbar-thin min-h-0" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
           <AnimatePresence mode="wait">
             {messages.length === 0 ? (
               <WelcomeScreen key="welcome" onSuggestionClick={handleSendMessage} />
             ) : (
-              <motion.div
-                key="messages"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-3 sm:space-y-4"
-              >
+              <motion.div key="messages" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-3 sm:space-y-4">
                 {messages.map((msg, index) => (
-                  <ChatMessage
-                    key={msg.id}
-                    role={msg.role}
-                    content={msg.content}
-                    isStreaming={isLoading && msg.role === 'assistant' && index === messages.length - 1}
-                  />
+                  <ChatMessage key={msg.id} role={msg.role} content={msg.content} isStreaming={isLoading && msg.role === 'assistant' && index === messages.length - 1} />
                 ))}
                 <div ref={messagesEndRef} className="h-4" />
               </motion.div>
             )}
           </AnimatePresence>
-
         </div>
 
-        {/* Input Area */}
+        {/* Input */}
         <div className="relative z-20 flex-shrink-0">
-          <ChatInput 
-            onSend={handleSendMessage} 
-            isLoading={isLoading} 
-            disabled={!user} 
-            onStop={handleStopGeneration}
-          />
+          <ChatInput onSend={handleSendMessage} isLoading={isLoading} onStop={handleStopGeneration} />
         </div>
       </main>
     </div>

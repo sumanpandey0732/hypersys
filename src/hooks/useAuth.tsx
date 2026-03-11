@@ -6,10 +6,12 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  isGuest: boolean;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  continueAsGuest: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -18,6 +20,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isGuest, setIsGuest] = useState(() => {
+    return localStorage.getItem('hypersys_guest') === 'true';
+  });
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -25,6 +30,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        if (session?.user) {
+          setIsGuest(false);
+          localStorage.removeItem('hypersys_guest');
+        }
       }
     );
 
@@ -63,11 +72,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    setIsGuest(false);
+    localStorage.removeItem('hypersys_guest');
     await supabase.auth.signOut();
   };
 
+  const continueAsGuest = () => {
+    setIsGuest(true);
+    localStorage.setItem('hypersys_guest', 'true');
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, isGuest, signUp, signIn, signInWithGoogle, signOut, continueAsGuest }}>
       {children}
     </AuthContext.Provider>
   );

@@ -6,9 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Rate limit: 10 image generations per hour
 const RATE_LIMIT_IMAGE = 10;
-const RATE_LIMIT_WINDOW_MS = 3600000; // 1 hour
+const RATE_LIMIT_WINDOW_MS = 3600000;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -16,7 +15,6 @@ serve(async (req) => {
   }
 
   try {
-    // Check for rate limiting (per-user)
     const authHeader = req.headers.get("Authorization");
     let userId: string | null = null;
     
@@ -30,8 +28,6 @@ serve(async (req) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         userId = user.id;
-        
-        // Check rate limit
         const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
         const { data: recentRequests } = await supabase
           .from("rate_limit_log")
@@ -42,41 +38,25 @@ serve(async (req) => {
         
         if (recentRequests && recentRequests.length >= RATE_LIMIT_IMAGE) {
           return new Response(
-            JSON.stringify({ 
-              error: "You've reached the image generation limit (10/hour). Please try again later! 🎨",
-              success: false 
-            }),
+            JSON.stringify({ error: "Image generation limit reached (10/hour). Please try again later! 🎨", success: false }),
             { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         
-        // Log this request for rate limiting
-        await supabase.from("rate_limit_log").insert({
-          user_id: userId,
-          endpoint: "generate-image"
-        });
+        await supabase.from("rate_limit_log").insert({ user_id: userId, endpoint: "generate-image" });
       }
     }
 
     const { prompt } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    if (!prompt) throw new Error("No prompt provided");
 
-    if (!prompt) {
-      throw new Error("No prompt provided");
-    }
+    const enhancedPrompt = `Create a stunning, high-quality, professional image: ${prompt}. Make it visually beautiful, vibrant, detailed, and artistically compelling.`;
 
-    // Enhanced prompt for better image generation
-    const enhancedPrompt = `Create a stunning, high-quality, professional image: ${prompt}. 
-Make it visually beautiful, vibrant, detailed, and artistically compelling. 
-Use excellent composition, lighting, and colors.`;
+    console.log("Generating image with gemini-3.1-flash-image-preview for:", prompt);
 
-    console.log("Generating image for prompt:", enhancedPrompt);
-
-    // Use Lovable AI Gateway with the pro image model for better quality
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -84,13 +64,8 @@ Use excellent composition, lighting, and colors.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image",
-        messages: [
-          {
-            role: "user",
-            content: enhancedPrompt,
-          },
-        ],
+        model: "google/gemini-3.1-flash-image-preview",
+        messages: [{ role: "user", content: enhancedPrompt }],
         modalities: ["image", "text"],
       }),
     });
@@ -98,55 +73,47 @@ Use excellent composition, lighting, and colors.`;
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Image generation error:", response.status, errorText);
-      
       if (response.status === 429) {
         return new Response(
-          JSON.stringify({ 
-            error: "I'm creating too many images right now! 🎨 Please wait a moment and try again.",
-            success: false 
-          }),
+          JSON.stringify({ error: "Too many image requests! Please wait a moment. 🎨", success: false }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
-      throw new Error(`Image generation failed: ${response.status}`);
+      throw new Error(`Image generation failed: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log("Image generation response received");
+    console.log("Image generation response keys:", Object.keys(data));
 
-    // Extract image from response
-    const imageUrl = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    // Try multiple paths to find the image
+    let imageUrl = data.choices?.[0]?.message?.images?.[0]?.image_url?.url
+      || data.choices?.[0]?.message?.images?.[0]?.url
+      || data.choices?.[0]?.message?.content?.match(/!\[.*?\]\((.*?)\)/)?.[1];
+
+    // Check inline_data (base64)
+    if (!imageUrl) {
+      const inlineData = data.choices?.[0]?.message?.images?.[0]?.inline_data;
+      if (inlineData?.data && inlineData?.mime_type) {
+        imageUrl = `data:${inlineData.mime_type};base64,${inlineData.data}`;
+      }
+    }
+
     const textContent = data.choices?.[0]?.message?.content || "";
 
     if (!imageUrl) {
+      console.error("Full response:", JSON.stringify(data).slice(0, 500));
       throw new Error("No image was generated. Please try a different description!");
     }
 
-    // Create a beautiful response message
-    const responseMessage = textContent || "I've created something beautiful for you! ✨ Hope you love it!";
-
     return new Response(
-      JSON.stringify({
-        imageUrl,
-        message: responseMessage,
-        success: true,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ imageUrl, message: textContent || "Here's your image! ✨", success: true }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Generate image error:", error);
     return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Failed to generate image. Please try again! 🎨",
-        success: false,
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ error: error instanceof Error ? error.message : "Failed to generate image", success: false }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
