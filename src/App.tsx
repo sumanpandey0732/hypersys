@@ -11,9 +11,8 @@ import { Sparkles } from "lucide-react";
 
 const queryClient = new QueryClient();
 
-// Protected route wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, isGuest } = useAuth();
 
   if (loading) {
     return (
@@ -28,16 +27,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
+  if (!user && !isGuest) {
     return <Navigate to="/auth" replace />;
   }
 
   return <>{children}</>;
 }
 
-// Auth route - redirects to / if already logged in
 function AuthRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, isGuest } = useAuth();
 
   if (loading) {
     return (
@@ -52,7 +50,7 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user) {
+  if (user || isGuest) {
     return <Navigate to="/" replace />;
   }
 
@@ -62,23 +60,8 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <Chat />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/auth"
-        element={
-          <AuthRoute>
-            <Auth />
-          </AuthRoute>
-        }
-      />
-      {/* Legacy route redirect */}
+      <Route path="/" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+      <Route path="/auth" element={<AuthRoute><Auth /></AuthRoute>} />
       <Route path="/chat" element={<Navigate to="/" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
