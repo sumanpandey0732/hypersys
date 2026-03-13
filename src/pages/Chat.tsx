@@ -87,20 +87,26 @@ export default function Chat() {
     }
 
     const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content };
+    const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     const allMessages = [...messages, userMessage];
-    setMessages(allMessages);
-    
+
+    setMessages([...messages, userMessage, assistantMessage]);
+
     if (convId && isAuthenticated) await saveMessage(convId, 'user', content);
 
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
 
-    const imageKeywords = ['generate image', 'create image', 'draw', 'make image', 'generate a picture', 'create a picture', 'generate picture', 'make a picture', 'imagine', 'visualize', 'paint', 'sketch'];
-    const isImageRequest = imageKeywords.some(kw => content.toLowerCase().includes(kw));
+    const isImageRequest = isImageGenerationRequest(content);
 
-    const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-    setMessages((prev) => [...prev, assistantMessage]);
     setIsLoading(true);
     abortControllerRef.current = new AbortController();
+
+    let timeoutReached = false;
+    let receivedAssistantContent = false;
+    const timeoutId = setTimeout(() => {
+      timeoutReached = true;
+      abortControllerRef.current?.abort();
+    }, REQUEST_TIMEOUT_MS);
 
     try {
       const endpoint = isImageRequest
@@ -108,8 +114,12 @@ export default function Chat() {
         : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (user) headers['Authorization'] = `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`;
-      else headers['Authorization'] = `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`;
+      if (user) {
+        const session = await supabase.auth.getSession();
+        headers.Authorization = `Bearer ${session.data.session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`;
+      } else {
+        headers.Authorization = `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`;
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -124,25 +134,51 @@ export default function Chat() {
       if (!response.ok) {
         const errorText = await response.text();
         let errorMsg = 'Failed to get response';
-        try { errorMsg = JSON.parse(errorText).error || errorMsg; } catch {}
+        try {
+          errorMsg = JSON.parse(errorText).error || errorMsg;
+        } catch {
+          // Ignore parse failures
+        }
         throw new Error(errorMsg);
       }
 
       if (isImageRequest) {
         const data = await response.json();
-        if (data.imageUrl) {
-          const imageContent = `Here's the image I created for you! ✨\n\n![Generated Image](${data.imageUrl})\n\n${data.message || ''}`;
-          setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: imageContent, imageUrl: data.imageUrl } : m));
-          if (convId && isAuthenticated) await saveMessage(convId, 'assistant', imageContent);
-        } else {
+        const generatedImageUrl = data.imageUrl || data?.data?.[0]?.url || null;
+
+        if (!generatedImageUrl) {
           throw new Error(data.error || 'Failed to generate image');
+        }
+
+        const imageMessage = sanitizeAssistantText(data.message || 'Image generated successfully! ✨');
+        const imageContent = `### **Generated image**\n\n![Generated Image](${generatedImageUrl})${imageMessage ? `\n\n${imageMessage}` : ''}`;
+
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: imageContent, imageUrl: generatedImageUrl } : m)),
+        );
+        receivedAssistantContent = true;
+
+        if (convId && isAuthenticated) {
+          await saveMessage(convId, 'assistant', imageContent);
         }
       } else {
         if (!response.body) throw new Error('No response body');
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let textBuffer = '';
         let fullContent = '';
+
+        const pushDelta = (delta: string) => {
+          if (!delta) return;
+          fullContent += delta;
+          receivedAssistantContent = true;
+
+          const liveContent = sanitizeAssistantText(fullContent) || fullContent;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: liveContent } : m)),
+          );
+        };
 
         while (true) {
           const { done, value } = await reader.read();
@@ -154,64 +190,74 @@ export default function Chat() {
 
           for (const rawLine of lines) {
             const line = rawLine.trim();
-            if (!line || line.startsWith(':')) continue;
-            if (line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim();
-              if (jsonStr === '[DONE]') continue;
-              try {
-                const parsed = JSON.parse(jsonStr);
-                const delta = parsed.choices?.[0]?.delta?.content;
-                if (delta) {
-                  fullContent += delta;
-                  setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: fullContent } : m));
-                }
-              } catch {
-                // skip unparseable chunks
-              }
+            if (!line || line.startsWith(':') || !line.startsWith('data:')) continue;
+
+            const payload = line.replace(/^data:\s*/, '');
+            if (payload === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(payload);
+              const delta = parsed?.choices?.[0]?.delta?.content;
+              if (typeof delta === 'string') pushDelta(delta);
+            } catch {
+              // Ignore malformed chunk and continue stream
             }
           }
         }
 
-        // Process remaining buffer
-        if (textBuffer.trim()) {
-          const line = textBuffer.trim();
-          if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+        if (textBuffer.trim().startsWith('data:')) {
+          const payload = textBuffer.trim().replace(/^data:\s*/, '');
+          if (payload !== '[DONE]') {
             try {
-              const delta = JSON.parse(line.slice(6)).choices?.[0]?.delta?.content;
-              if (delta) fullContent += delta;
-            } catch {}
+              const parsed = JSON.parse(payload);
+              const delta = parsed?.choices?.[0]?.delta?.content;
+              if (typeof delta === 'string') pushDelta(delta);
+            } catch {
+              // Ignore malformed final chunk
+            }
           }
         }
 
-        // Clean raw artifacts
-        const cleaned = fullContent
-          .replace(/\\n/g, '\n')
-          .replace(/\\"/g, '"')
-          .replace(/\\t/g, '\t')
-          .replace(/\\\\/g, '\\')
-          .trim();
+        const cleaned = sanitizeAssistantText(fullContent);
 
         if (cleaned) {
-          setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: cleaned } : m));
-          if (convId && isAuthenticated) await saveMessage(convId, 'assistant', cleaned);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: cleaned } : m)),
+          );
+
+          if (convId && isAuthenticated) {
+            await saveMessage(convId, 'assistant', cleaned);
+          }
         } else {
-          const fallback = "Hmm, let me try that again! 😅 Could you send your message once more?";
-          setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: fallback } : m));
-          if (convId && isAuthenticated) await saveMessage(convId, 'assistant', fallback);
+          const fallback = 'I had a formatting hiccup—please send that once more 🙏';
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fallback } : m)),
+          );
+          if (convId && isAuthenticated) {
+            await saveMessage(convId, 'assistant', fallback);
+          }
         }
       }
 
       if (isAuthenticated) loadConversations();
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        // keep partial content
+        if (timeoutReached && !receivedAssistantContent) {
+          const timeoutMessage = 'That took too long on my side—please send it again and I’ll keep it short.';
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: timeoutMessage } : m)),
+          );
+        }
       } else {
         console.error('Chat error:', error);
         toast.error(error instanceof Error ? error.message : 'Failed to send message');
-        const errContent = "Oops! Something went wrong. 😅 Let's try again!";
-        setMessages((prev) => prev.map((m) => m.id === assistantMessage.id ? { ...m, content: errContent } : m));
+        const errContent = 'Oops, something went wrong. Please try again!';
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: errContent } : m)),
+        );
       }
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
       abortControllerRef.current = null;
     }
