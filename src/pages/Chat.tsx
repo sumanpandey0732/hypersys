@@ -8,6 +8,7 @@ import WelcomeScreen from '@/components/chat/WelcomeScreen';
 import { Menu, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
+import { isImageGenerationRequest, sanitizeAssistantText } from '@/lib/chat-format';
 
 interface Message {
   id: string;
