@@ -6,6 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useState } from 'react';
 import { useElevenLabsTTS } from '@/hooks/useElevenLabsTTS';
+import { sanitizeAssistantText } from '@/lib/chat-format';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -27,8 +28,8 @@ function CodeBlock({ language, children }: { language: string; children: string 
         <div className="flex items-center gap-2">
           <div className="flex gap-1.5">
             <div className="w-3 h-3 rounded-full bg-destructive/80" />
-            <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-            <div className="w-3 h-3 rounded-full bg-green-500/80" />
+            <div className="w-3 h-3 rounded-full bg-accent/80" />
+            <div className="w-3 h-3 rounded-full bg-primary/80" />
           </div>
           <span className="text-xs text-muted-foreground/70 font-mono ml-2 uppercase tracking-wider">{language || 'code'}</span>
         </div>
@@ -51,42 +52,12 @@ function CodeBlock({ language, children }: { language: string; children: string 
   );
 }
 
-function cleanContent(raw: string): string {
-  if (!raw) return raw;
-  let text = raw;
-
-  // Fix literal escape sequences that come through as raw text
-  text = text.replace(/\\n/g, '\n');
-  text = text.replace(/\\"/g, '"');
-  text = text.replace(/\\t/g, '\t');
-  text = text.replace(/\\\\/g, '\\');
-
-  // Remove stray asterisks that aren't proper markdown bold/italic
-  // e.g. "** text" at line start without closing
-  text = text.replace(/^\*\*\s*$/gm, '');
-
-  // Ensure emoji bullets get proper spacing
-  const emojiPattern = /([^\n])([\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{2700}-\u{27BF}\u{FE00}-\u{FEFF}\u{1F000}-\u{1FFFF}])\s*\*\*/gu;
-  text = text.replace(emojiPattern, '$1\n\n$2 **');
-
-  // Force line breaks before numbered lists with bold
-  text = text.replace(/([^\n])(\d+\.\s*\*\*)/g, '$1\n\n$2');
-
-  // Force line breaks for headers
-  text = text.replace(/([^\n])(#{1,3}\s)/g, '$1\n\n$2');
-
-  // Clean excess newlines
-  text = text.replace(/\n{5,}/g, '\n\n\n');
-
-  return text.trim();
-}
-
 export default function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
   const isUser = role === 'user';
   const [copiedAll, setCopiedAll] = useState(false);
   const { speak, stop, isSpeaking, isLoading: isTTSLoading } = useElevenLabsTTS();
 
-  const displayContent = isUser ? content : cleanContent(content);
+  const displayContent = isUser ? content : sanitizeAssistantText(content);
 
   const handleCopyAll = async () => {
     await navigator.clipboard.writeText(displayContent);
@@ -161,13 +132,13 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                     ul: ({ children }) => <ul className="space-y-3 my-4 pl-0 list-none">{children}</ul>,
                     ol: ({ children }) => <ol className="space-y-3 my-4 pl-0 list-none">{children}</ol>,
                     li: ({ children }) => (
-                      <li className="flex items-start gap-3 text-[15px] sm:text-base leading-relaxed text-foreground/90 bg-secondary/30 rounded-xl p-3.5 border border-border/15 hover:border-primary/25 hover:bg-secondary/50 transition-all duration-200">
+                      <li className="flex items-start gap-3 text-[15px] sm:text-base leading-relaxed text-foreground/90 bg-gradient-to-r from-secondary/45 via-secondary/30 to-primary/10 rounded-xl p-3.5 border border-border/20 hover:border-primary/30 hover:from-secondary/60 hover:to-primary/15 transition-all duration-200 shadow-sm">
                         <span className="flex-shrink-0 mt-2 w-2 h-2 rounded-full bg-primary/70" />
                         <span className="flex-1">{children}</span>
                       </li>
                     ),
                     strong: ({ children }) => (
-                      <strong className="font-bold text-foreground">{children}</strong>
+                      <strong className="font-extrabold gradient-text">{children}</strong>
                     ),
                     em: ({ children }) => <em className="italic text-primary/90">{children}</em>,
                     blockquote: ({ children }) => (
