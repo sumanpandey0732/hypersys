@@ -24,6 +24,8 @@ interface Conversation {
   updated_at: string;
 }
 
+const REQUEST_TIMEOUT_MS = 45_000;
+
 export default function Chat() {
   const { user, isGuest } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
