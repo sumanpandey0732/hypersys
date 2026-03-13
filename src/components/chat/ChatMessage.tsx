@@ -132,13 +132,13 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                     ul: ({ children }) => <ul className="space-y-3 my-4 pl-0 list-none">{children}</ul>,
                     ol: ({ children }) => <ol className="space-y-3 my-4 pl-0 list-none">{children}</ol>,
                     li: ({ children }) => (
-                      <li className="flex items-start gap-3 text-[15px] sm:text-base leading-relaxed text-foreground/90 bg-secondary/30 rounded-xl p-3.5 border border-border/15 hover:border-primary/25 hover:bg-secondary/50 transition-all duration-200">
+                      <li className="flex items-start gap-3 text-[15px] sm:text-base leading-relaxed text-foreground/90 bg-gradient-to-r from-secondary/45 via-secondary/30 to-primary/10 rounded-xl p-3.5 border border-border/20 hover:border-primary/30 hover:from-secondary/60 hover:to-primary/15 transition-all duration-200 shadow-sm">
                         <span className="flex-shrink-0 mt-2 w-2 h-2 rounded-full bg-primary/70" />
                         <span className="flex-1">{children}</span>
                       </li>
                     ),
                     strong: ({ children }) => (
-                      <strong className="font-bold text-foreground">{children}</strong>
+                      <strong className="font-extrabold gradient-text">{children}</strong>
                     ),
                     em: ({ children }) => <em className="italic text-primary/90">{children}</em>,
                     blockquote: ({ children }) => (
