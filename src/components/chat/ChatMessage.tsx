@@ -28,8 +28,8 @@ function CodeBlock({ language, children }: { language: string; children: string 
         <div className="flex items-center gap-2">
           <div className="flex gap-1.5">
             <div className="w-3 h-3 rounded-full bg-destructive/80" />
-            <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-            <div className="w-3 h-3 rounded-full bg-green-500/80" />
+            <div className="w-3 h-3 rounded-full bg-accent/80" />
+            <div className="w-3 h-3 rounded-full bg-primary/80" />
           </div>
           <span className="text-xs text-muted-foreground/70 font-mono ml-2 uppercase tracking-wider">{language || 'code'}</span>
         </div>
