@@ -6,6 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useState } from 'react';
 import { useElevenLabsTTS } from '@/hooks/useElevenLabsTTS';
+import { sanitizeAssistantText } from '@/lib/chat-format';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -51,42 +52,12 @@ function CodeBlock({ language, children }: { language: string; children: string 
   );
 }
 
-function cleanContent(raw: string): string {
-  if (!raw) return raw;
-  let text = raw;
-
-  // Fix literal escape sequences that come through as raw text
-  text = text.replace(/\\n/g, '\n');
-  text = text.replace(/\\"/g, '"');
-  text = text.replace(/\\t/g, '\t');
-  text = text.replace(/\\\\/g, '\\');
-
-  // Remove stray asterisks that aren't proper markdown bold/italic
-  // e.g. "** text" at line start without closing
-  text = text.replace(/^\*\*\s*$/gm, '');
-
-  // Ensure emoji bullets get proper spacing
-  const emojiPattern = /([^\n])([\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{2700}-\u{27BF}\u{FE00}-\u{FEFF}\u{1F000}-\u{1FFFF}])\s*\*\*/gu;
-  text = text.replace(emojiPattern, '$1\n\n$2 **');
-
-  // Force line breaks before numbered lists with bold
-  text = text.replace(/([^\n])(\d+\.\s*\*\*)/g, '$1\n\n$2');
-
-  // Force line breaks for headers
-  text = text.replace(/([^\n])(#{1,3}\s)/g, '$1\n\n$2');
-
-  // Clean excess newlines
-  text = text.replace(/\n{5,}/g, '\n\n\n');
-
-  return text.trim();
-}
-
 export default function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
   const isUser = role === 'user';
   const [copiedAll, setCopiedAll] = useState(false);
   const { speak, stop, isSpeaking, isLoading: isTTSLoading } = useElevenLabsTTS();
 
-  const displayContent = isUser ? content : cleanContent(content);
+  const displayContent = isUser ? content : sanitizeAssistantText(content);
 
   const handleCopyAll = async () => {
     await navigator.clipboard.writeText(displayContent);
