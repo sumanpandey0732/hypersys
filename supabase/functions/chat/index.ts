@@ -181,6 +181,14 @@ When web results are provided, integrate them naturally and cite sources casuall
 
 Remember: You're the world's most lovable, funny, smart, and genuine friend that everyone wishes they had! 🔥`;
 
+// AgentRouter model mapping
+const AGENTROUTER_MODELS: Record<string, string> = {
+  coder: "anthropic/claude-opus-4-0",
+  thinker: "deepseek/deepseek-r1-0528",
+  overall: "deepseek/deepseek-chat-v3-0324",
+  casual: "zhipu-ai/glm-4-plus",
+};
+
 function isLikelyImageRequest(query: string): boolean {
   return IMAGE_REQUEST_PATTERN.test(query);
 }
@@ -193,7 +201,6 @@ function needsWebSearch(query: string): boolean {
 
 function detectLanguageHint(text: string): string {
   if (!text) return "English";
-
   if (/[\u0900-\u097F]/u.test(text)) return "Hindi";
   if (/[\u0980-\u09FF]/u.test(text)) return "Bengali";
   if (/[\u0A80-\u0AFF]/u.test(text)) return "Gujarati";
@@ -201,7 +208,6 @@ function detectLanguageHint(text: string): string {
   if (/[\u3040-\u30FF\u4E00-\u9FFF]/u.test(text)) return "Japanese/Chinese";
   if (/[\u0600-\u06FF]/u.test(text)) return "Arabic";
   if (/[\u0400-\u04FF]/u.test(text)) return "Cyrillic language";
-
   return "English";
 }
 
@@ -227,36 +233,22 @@ async function performWebSearch(query: string): Promise<{ context: string; sourc
     const sources: string[] = [];
 
     const quickAnswer = normalizeSnippet(data?.answer_box?.answer) || normalizeSnippet(data?.answer_box?.snippet);
-    if (quickAnswer) {
-      lines.push(`Quick answer: ${quickAnswer}`);
-    }
+    if (quickAnswer) lines.push(`Quick answer: ${quickAnswer}`);
 
     const kgDescription = normalizeSnippet(data?.knowledge_graph?.description);
-    if (kgDescription) {
-      lines.push(`Knowledge graph: ${kgDescription}`);
-    }
+    if (kgDescription) lines.push(`Knowledge graph: ${kgDescription}`);
 
     const organicResults = Array.isArray(data?.organic_results) ? data.organic_results.slice(0, 4) : [];
     for (const result of organicResults) {
       const title = normalizeSnippet(result?.title);
       const snippet = normalizeSnippet(result?.snippet);
       const link = normalizeSnippet(result?.link);
-
-      if (title || snippet) {
-        lines.push(`- ${title}${snippet ? `: ${snippet}` : ""}`.trim());
-      }
-
-      if (link) {
-        sources.push(link);
-      }
+      if (title || snippet) lines.push(`- ${title}${snippet ? `: ${snippet}` : ""}`.trim());
+      if (link) sources.push(link);
     }
 
     if (!lines.length) return null;
-
-    return {
-      context: lines.join("\n"),
-      sources: [...new Set(sources)].slice(0, 4),
-    };
+    return { context: lines.join("\n"), sources: [...new Set(sources)].slice(0, 4) };
   } catch (error) {
     console.error("Web search error:", error);
     return null;
@@ -270,7 +262,6 @@ function buildSystemPrompt(languageHint: string, searchData: { context: string; 
     const sourceLine = searchData.sources.length
       ? `\nKnown source URLs:\n${searchData.sources.map((url, index) => `${index + 1}. ${url}`).join("\n")}`
       : "";
-
     prompt += `\n\nWeb context (use this for up-to-date answers):\n${searchData.context}${sourceLine}\n\nWhen using this web context, end with one short source line like: Sources: [1](url) [2](url).`;
   }
 
@@ -292,9 +283,7 @@ serve(async (req) => {
         { global: { headers: { Authorization: authHeader } } },
       );
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
         const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
@@ -318,17 +307,13 @@ serve(async (req) => {
 
     const body = await req.json();
     const incomingMessages = Array.isArray(body?.messages) ? body.messages : [];
+    const selectedModel = typeof body?.model === "string" ? body.model : "default";
 
     if (!incomingMessages.length) {
       return new Response(
         JSON.stringify({ error: "No messages provided" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
-    }
-
-    const mistralApiKey = Deno.env.get("MISTRAL_API_KEY");
-    if (!mistralApiKey) {
-      throw new Error("MISTRAL_API_KEY is not configured");
     }
 
     const lastUserMessage = [...incomingMessages]
@@ -339,7 +324,7 @@ serve(async (req) => {
     const searchData = needsWebSearch(userText) ? await performWebSearch(userText) : null;
     const systemPrompt = buildSystemPrompt(detectLanguageHint(userText), searchData);
 
-    const mistralMessages = [
+    const formattedMessages = [
       { role: "system", content: systemPrompt },
       ...incomingMessages.map((msg: { role?: string; content?: unknown }) => ({
         role: msg?.role === "assistant" ? "assistant" : "user",
@@ -347,41 +332,78 @@ serve(async (req) => {
       })),
     ];
 
-    const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${mistralApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "mistral-large-latest",
-        messages: mistralMessages,
-        stream: true,
-        temperature: 0.45,
-        top_p: 0.9,
-        max_tokens: 1200,
-      }),
-    });
+    // Route to AgentRouter or default Mistral
+    const agentRouterModel = AGENTROUTER_MODELS[selectedModel];
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Mistral API error:", response.status, errorText);
+    if (agentRouterModel) {
+      // Use AgentRouter
+      const agentRouterKey = Deno.env.get("AGENTROUTER_API_KEY");
+      if (!agentRouterKey) throw new Error("AGENTROUTER_API_KEY is not configured");
 
-      const status = response.status === 429 || response.status === 401 ? response.status : 500;
-      return new Response(
-        JSON.stringify({ error: status === 429 ? "Rate limit exceeded." : status === 401 ? "Model API key is invalid." : `Model API error: ${response.status}` }),
-        { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      const response = await fetch("https://api.agentrouter.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${agentRouterKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: agentRouterModel,
+          messages: formattedMessages,
+          stream: true,
+          temperature: 0.45,
+          top_p: 0.9,
+          max_tokens: 1200,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("AgentRouter API error:", response.status, errorText);
+        const status = response.status === 429 ? 429 : 500;
+        return new Response(
+          JSON.stringify({ error: status === 429 ? "Rate limit exceeded." : `Model API error: ${response.status}` }),
+          { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      return new Response(response.body, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+      });
+    } else {
+      // Default: Mistral
+      const mistralApiKey = Deno.env.get("MISTRAL_API_KEY");
+      if (!mistralApiKey) throw new Error("MISTRAL_API_KEY is not configured");
+
+      const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${mistralApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "mistral-large-latest",
+          messages: formattedMessages,
+          stream: true,
+          temperature: 0.45,
+          top_p: 0.9,
+          max_tokens: 1200,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Mistral API error:", response.status, errorText);
+        const status = response.status === 429 || response.status === 401 ? response.status : 500;
+        return new Response(
+          JSON.stringify({ error: status === 429 ? "Rate limit exceeded." : status === 401 ? "Model API key is invalid." : `Model API error: ${response.status}` }),
+          { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      return new Response(response.body, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+      });
     }
-
-    return new Response(response.body, {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
   } catch (error) {
     console.error("Chat function error:", error);
     return new Response(

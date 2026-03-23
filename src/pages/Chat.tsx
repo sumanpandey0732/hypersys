@@ -33,6 +33,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [selectedModel, setSelectedModel] = useState('default');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -127,6 +128,7 @@ export default function Chat() {
         body: JSON.stringify({
           messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
           prompt: content,
+          model: selectedModel,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -286,6 +288,8 @@ export default function Chat() {
           onDeleteConversation={handleDeleteConversation}
           isCollapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel}
         />
       )}
 

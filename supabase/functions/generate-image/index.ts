@@ -9,39 +9,6 @@ const corsHeaders = {
 const RATE_LIMIT_IMAGE = 10;
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
-function extractImageUrl(payload: any): string | null {
-  const imageCandidates = [
-    payload?.choices?.[0]?.message?.images?.[0]?.image_url?.url,
-    payload?.choices?.[0]?.message?.images?.[0]?.image_url,
-    payload?.choices?.[0]?.message?.images?.[0]?.url,
-    payload?.data?.[0]?.url,
-  ];
-
-  for (const candidate of imageCandidates) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate;
-    }
-  }
-
-  const inlineData = payload?.choices?.[0]?.message?.images?.[0]?.inline_data;
-  if (inlineData?.data && inlineData?.mime_type) {
-    return `data:${inlineData.mime_type};base64,${inlineData.data}`;
-  }
-
-  const messageContent = payload?.choices?.[0]?.message?.content;
-  if (Array.isArray(messageContent)) {
-    const imagePart = messageContent.find((part: any) => part?.type === "image_url" && part?.image_url?.url);
-    if (imagePart?.image_url?.url) return imagePart.image_url.url;
-  }
-
-  if (typeof messageContent === "string") {
-    const markdownImage = messageContent.match(/!\[.*?\]\((.*?)\)/)?.[1];
-    if (markdownImage) return markdownImage;
-  }
-
-  return null;
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -57,9 +24,7 @@ serve(async (req) => {
         { global: { headers: { Authorization: authHeader } } },
       );
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
         const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
@@ -90,18 +55,36 @@ serve(async (req) => {
 
     const enhancedPrompt = `Create a high-quality image with strong composition and clean details: ${prompt}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Try primary model first
+    let response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3.1-flash-image-preview",
+        model: "google/gemini-2.5-flash-image",
         messages: [{ role: "user", content: enhancedPrompt }],
         modalities: ["image", "text"],
       }),
     });
+
+    // Fallback to secondary model if primary fails
+    if (!response.ok) {
+      console.log("Primary model failed, trying fallback model...");
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3.1-flash-image-preview",
+          messages: [{ role: "user", content: enhancedPrompt }],
+          modalities: ["image", "text"],
+        }),
+      });
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -118,18 +101,54 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const imageUrl = extractImageUrl(data);
+    
+    // Extract image URL from various response formats
+    let imageUrl: string | null = null;
+
+    // Check images array
+    const images = data?.choices?.[0]?.message?.images;
+    if (Array.isArray(images) && images.length > 0) {
+      const img = images[0];
+      if (typeof img?.image_url?.url === "string") imageUrl = img.image_url.url;
+      else if (typeof img?.image_url === "string") imageUrl = img.image_url;
+      else if (typeof img?.url === "string") imageUrl = img.url;
+      else if (img?.inline_data?.data && img?.inline_data?.mime_type) {
+        imageUrl = `data:${img.inline_data.mime_type};base64,${img.inline_data.data}`;
+      }
+    }
+
+    // Check data array
+    if (!imageUrl && data?.data?.[0]?.url) {
+      imageUrl = data.data[0].url;
+    }
+
+    // Check content array for image parts
+    if (!imageUrl) {
+      const content = data?.choices?.[0]?.message?.content;
+      if (Array.isArray(content)) {
+        const imagePart = content.find((p: any) => p?.type === "image_url" && p?.image_url?.url);
+        if (imagePart) imageUrl = imagePart.image_url.url;
+      }
+      // Check for markdown image in string content
+      if (!imageUrl && typeof content === "string") {
+        const match = content.match(/!\[.*?\]\((.*?)\)/);
+        if (match?.[1]) imageUrl = match[1];
+      }
+    }
+
     const messageText = data?.choices?.[0]?.message?.content;
+    const textMessage = typeof messageText === "string" ? messageText : 
+      Array.isArray(messageText) ? messageText.filter((p: any) => p?.type === "text").map((p: any) => p.text).join(" ") : "";
 
     if (!imageUrl) {
-      console.error("Image URL missing in response payload");
-      throw new Error("I couldn't generate that image yet. Please try a different prompt.");
+      console.error("Full response payload:", JSON.stringify(data, null, 2));
+      throw new Error("Could not generate that image. Please try a different or simpler prompt.");
     }
 
     return new Response(
       JSON.stringify({
         imageUrl,
-        message: typeof messageText === "string" ? messageText : "Your image is ready!",
+        message: textMessage || "Your image is ready! ✨",
         success: true,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
