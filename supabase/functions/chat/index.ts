@@ -340,7 +340,7 @@ serve(async (req) => {
       const agentRouterKey = Deno.env.get("AGENTROUTER_API_KEY");
       if (!agentRouterKey) throw new Error("AGENTROUTER_API_KEY is not configured");
 
-      const response = await fetch("https://api.agentrouter.ai/v1/chat/completions", {
+      const response = await fetch("https://agentrouter.org/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${agentRouterKey}`,
