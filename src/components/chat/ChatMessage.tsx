@@ -126,9 +126,14 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                     h3: ({ children }) => (
                       <h3 className="text-lg sm:text-xl md:text-2xl font-semibold mb-3 mt-6 first:mt-0 text-foreground/95 border-b border-border/30 pb-2">{children}</h3>
                     ),
-                    p: ({ children }) => (
-                      <p className="text-[15px] sm:text-base md:text-lg leading-[1.85] mb-4 last:mb-0 text-foreground/90">{children}</p>
-                    ),
+                    p: ({ children, node }) => {
+                      // If paragraph contains only an image, render as div to avoid nesting issues
+                      const hasImage = node?.children?.some((child: any) => child.tagName === 'img');
+                      if (hasImage) {
+                        return <div className="text-[15px] sm:text-base md:text-lg leading-[1.85] mb-4 last:mb-0 text-foreground/90">{children}</div>;
+                      }
+                      return <p className="text-[15px] sm:text-base md:text-lg leading-[1.85] mb-4 last:mb-0 text-foreground/90">{children}</p>;
+                    },
                     ul: ({ children }) => <ul className="space-y-3 my-4 pl-0 list-none">{children}</ul>,
                     ol: ({ children }) => <ol className="space-y-3 my-4 pl-0 list-none">{children}</ol>,
                     li: ({ children }) => (
@@ -163,11 +168,20 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                     th: ({ children }) => <th className="px-5 py-3 text-left font-bold bg-primary/10 border-b border-border/40 text-foreground">{children}</th>,
                     td: ({ children }) => <td className="px-5 py-3 border-b border-border/20 text-foreground/85">{children}</td>,
                     hr: () => <hr className="my-8 border-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />,
-                    img: ({ src, alt }) => (
-                      <div className="my-5 rounded-2xl overflow-hidden border border-border/30 shadow-2xl">
-                        <img src={src} alt={alt || ''} className="w-full h-auto" />
-                      </div>
-                    ),
+                    img: ({ src, alt }) => {
+                      if (src && (src.startsWith('data:image') || src.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i))) {
+                        return (
+                          <span className="block my-5 rounded-2xl overflow-hidden border border-border/30 shadow-2xl">
+                            <img src={src} alt={alt || 'Generated image'} className="w-full h-auto block" loading="lazy" />
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="block my-5 rounded-2xl overflow-hidden border border-border/30 shadow-2xl">
+                          <img src={src} alt={alt || ''} className="w-full h-auto block" loading="lazy" />
+                        </span>
+                      );
+                    },
                   }}
                 >
                   {displayContent}

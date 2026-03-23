@@ -50,7 +50,7 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user || isGuest) {
+  if (user) {
     return <Navigate to="/" replace />;
   }
 
