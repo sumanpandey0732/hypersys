@@ -163,11 +163,20 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
                     th: ({ children }) => <th className="px-5 py-3 text-left font-bold bg-primary/10 border-b border-border/40 text-foreground">{children}</th>,
                     td: ({ children }) => <td className="px-5 py-3 border-b border-border/20 text-foreground/85">{children}</td>,
                     hr: () => <hr className="my-8 border-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />,
-                    img: ({ src, alt }) => (
-                      <div className="my-5 rounded-2xl overflow-hidden border border-border/30 shadow-2xl">
-                        <img src={src} alt={alt || ''} className="w-full h-auto" />
-                      </div>
-                    ),
+                    img: ({ src, alt }) => {
+                      if (src && (src.startsWith('data:image') || src.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i))) {
+                        return (
+                          <span className="block my-5 rounded-2xl overflow-hidden border border-border/30 shadow-2xl">
+                            <img src={src} alt={alt || 'Generated image'} className="w-full h-auto block" loading="lazy" />
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="block my-5 rounded-2xl overflow-hidden border border-border/30 shadow-2xl">
+                          <img src={src} alt={alt || ''} className="w-full h-auto block" loading="lazy" />
+                        </span>
+                      );
+                    },
                   }}
                 >
                   {displayContent}
