@@ -1,9 +1,25 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, MessageSquare, Trash2, LogOut, ChevronLeft, Sparkles } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, LogOut, ChevronLeft, Sparkles, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
+
+export interface AIModel {
+  id: string;
+  name: string;
+  label: string;
+  description: string;
+  emoji: string;
+}
+
+export const AI_MODELS: AIModel[] = [
+  { id: 'default', name: 'HyperSYS', label: 'Default', description: 'Balanced & friendly', emoji: '✨' },
+  { id: 'coder', name: 'Opus 4.6', label: 'Coder', description: 'Code specialist', emoji: '💻' },
+  { id: 'thinker', name: 'R1-0528', label: 'Thinker', description: 'Deep reasoning', emoji: '🧠' },
+  { id: 'overall', name: 'V3.2', label: 'Overall', description: 'All-rounder', emoji: '🌟' },
+  { id: 'casual', name: 'GLM 4.6', label: 'Casual', description: 'Light & casual', emoji: '😎' },
+];
 
 interface Conversation {
   id: string;
@@ -20,11 +36,14 @@ interface ChatSidebarProps {
   onDeleteConversation: (id: string) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  selectedModel: string;
+  onSelectModel: (id: string) => void;
 }
 
 export default function ChatSidebar({
   conversations, activeConversationId, onSelectConversation,
   onNewConversation, onDeleteConversation, isCollapsed, onToggleCollapse,
+  selectedModel, onSelectModel,
 }: ChatSidebarProps) {
   const { user, signOut } = useAuth();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -59,10 +78,46 @@ export default function ChatSidebar({
             </div>
           </div>
 
-          <div className="p-4">
+          <div className="p-4 space-y-3">
             <Button onClick={onNewConversation} className="w-full bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 justify-start gap-3 py-5">
               <Plus className="w-5 h-5" /> New Chat
             </Button>
+
+            {/* Model Selector */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 px-2">
+                <Bot className="w-3.5 h-3.5 text-sidebar-foreground/50" />
+                <p className="text-xs font-medium text-sidebar-foreground/50 uppercase tracking-wider">AI Model</p>
+              </div>
+              <div className="space-y-1">
+                {AI_MODELS.map((model) => (
+                  <button
+                    key={model.id}
+                    onClick={() => onSelectModel(model.id)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all duration-200 text-sm
+                      ${selectedModel === model.id
+                        ? 'bg-primary/15 text-primary border border-primary/25 shadow-sm shadow-primary/10'
+                        : 'hover:bg-sidebar-accent/50 text-sidebar-foreground/70 hover:text-sidebar-foreground border border-transparent'
+                      }`}
+                  >
+                    <span className="text-base">{model.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium truncate">{model.label}</span>
+                        <span className="text-[10px] text-sidebar-foreground/40 truncate">{model.name}</span>
+                      </div>
+                    </div>
+                    {selectedModel === model.id && (
+                      <motion.div
+                        layoutId="model-indicator"
+                        className="w-1.5 h-1.5 rounded-full bg-primary"
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-4">
