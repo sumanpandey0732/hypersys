@@ -287,6 +287,8 @@ export default function Chat() {
           onDeleteConversation={handleDeleteConversation}
           isCollapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel}
         />
       )}
 
