@@ -72,8 +72,6 @@ export function sanitizeAssistantText(raw: string): string {
 
   text = decodeCommonEscapes(text)
     .replace(/^\s*(assistant|response)\s*:\s*/i, "")
-    .replace(/```(?:markdown|md|text)?\s*/gi, "")
-    .replace(/```/g, "")
     .trim();
 
   // Keep spacing clean and readable for lists/headers
