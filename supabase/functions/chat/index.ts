@@ -373,7 +373,7 @@ serve(async (req) => {
 
     const userText = typeof lastUserMessage === "string" ? lastUserMessage : "";
     const searchData = needsWebSearch(userText) ? await performWebSearch(userText) : null;
-    const systemPrompt = buildSystemPrompt(detectLanguageHint(userText), searchData);
+    const systemPrompt = buildSystemPrompt(detectLanguageHint(userText), searchData, selectedModel);
 
     const formattedMessages = [
       { role: "system", content: systemPrompt },
