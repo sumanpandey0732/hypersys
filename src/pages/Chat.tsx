@@ -221,23 +221,14 @@ export default function Chat() {
         }
 
         const cleaned = sanitizeAssistantText(fullContent);
+        const finalContent = cleaned || fullContent.trim() || 'Something went wrong — please try again 🙏';
 
-        if (cleaned) {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: cleaned } : m)),
-          );
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: finalContent } : m)),
+        );
 
-          if (convId && isAuthenticated) {
-            await saveMessage(convId, 'assistant', cleaned);
-          }
-        } else {
-          const fallback = 'I had a formatting hiccup—please send that once more 🙏';
-          setMessages((prev) =>
-            prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: fallback } : m)),
-          );
-          if (convId && isAuthenticated) {
-            await saveMessage(convId, 'assistant', fallback);
-          }
+        if (convId && isAuthenticated) {
+          await saveMessage(convId, 'assistant', finalContent);
         }
       }
 
