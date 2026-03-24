@@ -6,8 +6,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const HORDE_API_URL = "https://stablehorde.net/api/v2";
 const RATE_LIMIT_IMAGE = 10;
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_ATTEMPTS = 40; // ~2 minutes max wait
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -48,107 +51,86 @@ serve(async (req) => {
 
     const body = await req.json();
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
 
-    if (!lovableApiKey) throw new Error("LOVABLE_API_KEY is not configured");
     if (!prompt) throw new Error("No prompt provided");
 
-    const enhancedPrompt = `Create a high-quality image with strong composition and clean details: ${prompt}`;
+    // Use anonymous API key (0000000000) or a configured one
+    const hordeApiKey = Deno.env.get("HORDE_API_KEY") || "0000000000";
 
-    // Try primary model first
-    let response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Step 1: Submit async generation request
+    const submitResponse = await fetch(`${HORDE_API_URL}/generate/async`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
+        apikey: hordeApiKey,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image",
-        messages: [{ role: "user", content: enhancedPrompt }],
-        modalities: ["image", "text"],
+        prompt: prompt,
+        params: {
+          sampler_name: "k_euler_a",
+          cfg_scale: 7,
+          width: 512,
+          height: 512,
+          steps: 30,
+          n: 1,
+        },
+        nsfw: false,
+        censor_nsfw: true,
+        models: ["stable_diffusion"],
+        r2: true,
       }),
     });
 
-    // Fallback to secondary model if primary fails
-    if (!response.ok) {
-      console.log("Primary model failed, trying fallback model...");
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3.1-flash-image-preview",
-          messages: [{ role: "user", content: enhancedPrompt }],
-          modalities: ["image", "text"],
-        }),
-      });
+    if (!submitResponse.ok) {
+      const errText = await submitResponse.text();
+      console.error("Horde submit error:", submitResponse.status, errText);
+      throw new Error(`Image generation request failed: ${submitResponse.status}`);
     }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Image generation API error:", response.status, errorText);
+    const submitData = await submitResponse.json();
+    const requestId = submitData?.id;
 
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Too many image requests. Please wait a moment.", success: false }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      throw new Error(`Image generation failed: ${response.status}`);
+    if (!requestId) {
+      console.error("No request ID from Horde:", JSON.stringify(submitData));
+      throw new Error("Failed to queue image generation");
     }
 
-    const data = await response.json();
-    
-    // Extract image URL from various response formats
+    // Step 2: Poll for completion
     let imageUrl: string | null = null;
 
-    // Check images array
-    const images = data?.choices?.[0]?.message?.images;
-    if (Array.isArray(images) && images.length > 0) {
-      const img = images[0];
-      if (typeof img?.image_url?.url === "string") imageUrl = img.image_url.url;
-      else if (typeof img?.image_url === "string") imageUrl = img.image_url;
-      else if (typeof img?.url === "string") imageUrl = img.url;
-      else if (img?.inline_data?.data && img?.inline_data?.mime_type) {
-        imageUrl = `data:${img.inline_data.mime_type};base64,${img.inline_data.data}`;
+    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+
+      const statusResponse = await fetch(`${HORDE_API_URL}/generate/status/${requestId}`, {
+        headers: { apikey: hordeApiKey },
+      });
+
+      if (!statusResponse.ok) {
+        console.error("Horde status check error:", statusResponse.status);
+        continue;
+      }
+
+      const statusData = await statusResponse.json();
+
+      if (statusData.faulted) {
+        throw new Error("Image generation failed on the server. Please try a different prompt.");
+      }
+
+      if (statusData.done && statusData.generations?.length > 0) {
+        const gen = statusData.generations[0];
+        imageUrl = gen.img;
+        break;
       }
     }
-
-    // Check data array
-    if (!imageUrl && data?.data?.[0]?.url) {
-      imageUrl = data.data[0].url;
-    }
-
-    // Check content array for image parts
-    if (!imageUrl) {
-      const content = data?.choices?.[0]?.message?.content;
-      if (Array.isArray(content)) {
-        const imagePart = content.find((p: any) => p?.type === "image_url" && p?.image_url?.url);
-        if (imagePart) imageUrl = imagePart.image_url.url;
-      }
-      // Check for markdown image in string content
-      if (!imageUrl && typeof content === "string") {
-        const match = content.match(/!\[.*?\]\((.*?)\)/);
-        if (match?.[1]) imageUrl = match[1];
-      }
-    }
-
-    const messageText = data?.choices?.[0]?.message?.content;
-    const textMessage = typeof messageText === "string" ? messageText : 
-      Array.isArray(messageText) ? messageText.filter((p: any) => p?.type === "text").map((p: any) => p.text).join(" ") : "";
 
     if (!imageUrl) {
-      console.error("Full response payload:", JSON.stringify(data, null, 2));
-      throw new Error("Could not generate that image. Please try a different or simpler prompt.");
+      throw new Error("Image generation timed out. The servers might be busy — please try again.");
     }
 
     return new Response(
       JSON.stringify({
         imageUrl,
-        message: textMessage || "Your image is ready! ✨",
+        message: "Your image is ready! ✨ Powered by Stable Horde AI",
         success: true,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
