@@ -404,9 +404,9 @@ serve(async (req) => {
           model: agentRouterModel,
           messages: formattedMessages,
           stream: true,
-          temperature: 0.45,
-          top_p: 0.9,
-          max_tokens: 1200,
+          temperature: 0.5,
+          top_p: 0.95,
+          max_tokens: 4096,
         }),
       });
 
