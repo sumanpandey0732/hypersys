@@ -6,8 +6,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const HORDE_API_URL = "https://stablehorde.net/api/v2";
 const RATE_LIMIT_IMAGE = 10;
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_ATTEMPTS = 40; // ~2 minutes max wait
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -48,52 +51,29 @@ serve(async (req) => {
 
     const body = await req.json();
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+
     if (!prompt) throw new Error("No prompt provided");
 
-    // Try Lovable AI gateway first (Nano Banana), fallback to Horde AI
-    const lovableKey = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (lovableKey) {
-      try {
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${lovableKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash-image",
-            messages: [{ role: "user", content: `Generate a high quality image: ${prompt}` }],
-            modalities: ["image", "text"],
-          }),
-        });
+    // Use anonymous API key (0000000000) or a configured one
+    const hordeApiKey = Deno.env.get("HORDE_API_KEY") || "0000000000";
 
-        if (aiResponse.ok) {
-          const data = await aiResponse.json();
-          const imageData = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-          
-          if (imageData) {
-            return new Response(
-              JSON.stringify({ imageUrl: imageData, message: "Your image is ready! ✨", success: true }),
-              { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-            );
-          }
-        }
-        console.log("Lovable AI image gen failed, falling back to Horde AI");
-      } catch (e) {
-        console.error("Lovable AI error:", e);
-      }
-    }
-
-    // Fallback: Stable Horde AI
-    const hordeApiKey = Deno.env.get("AI_HORDE_KEY") || "0000000000";
-
-    const submitResponse = await fetch("https://stablehorde.net/api/v2/generate/async", {
+    // Step 1: Submit async generation request
+    const submitResponse = await fetch(`${HORDE_API_URL}/generate/async`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", apikey: hordeApiKey },
+      headers: {
+        "Content-Type": "application/json",
+        apikey: hordeApiKey,
+      },
       body: JSON.stringify({
-        prompt,
-        params: { sampler_name: "k_euler_a", cfg_scale: 7.5, width: 512, height: 512, steps: 35, n: 1 },
+        prompt: prompt,
+        params: {
+          sampler_name: "k_euler_a",
+          cfg_scale: 7,
+          width: 512,
+          height: 512,
+          steps: 30,
+          n: 1,
+        },
         nsfw: false,
         censor_nsfw: true,
         models: ["stable_diffusion"],
@@ -104,35 +84,57 @@ serve(async (req) => {
     if (!submitResponse.ok) {
       const errText = await submitResponse.text();
       console.error("Horde submit error:", submitResponse.status, errText);
-      throw new Error("Image generation request failed");
+      throw new Error(`Image generation request failed: ${submitResponse.status}`);
     }
 
     const submitData = await submitResponse.json();
     const requestId = submitData?.id;
-    if (!requestId) throw new Error("Failed to queue image generation");
 
-    // Poll for completion
-    for (let attempt = 0; attempt < 40; attempt++) {
-      await new Promise((r) => setTimeout(r, 3000));
+    if (!requestId) {
+      console.error("No request ID from Horde:", JSON.stringify(submitData));
+      throw new Error("Failed to queue image generation");
+    }
 
-      const statusResponse = await fetch(`https://stablehorde.net/api/v2/generate/status/${requestId}`, {
+    // Step 2: Poll for completion
+    let imageUrl: string | null = null;
+
+    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+
+      const statusResponse = await fetch(`${HORDE_API_URL}/generate/status/${requestId}`, {
         headers: { apikey: hordeApiKey },
       });
 
-      if (!statusResponse.ok) continue;
+      if (!statusResponse.ok) {
+        console.error("Horde status check error:", statusResponse.status);
+        continue;
+      }
+
       const statusData = await statusResponse.json();
 
-      if (statusData.faulted) throw new Error("Image generation failed. Try a different prompt.");
+      if (statusData.faulted) {
+        throw new Error("Image generation failed on the server. Please try a different prompt.");
+      }
 
       if (statusData.done && statusData.generations?.length > 0) {
-        return new Response(
-          JSON.stringify({ imageUrl: statusData.generations[0].img, message: "Your image is ready! ✨", success: true }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        const gen = statusData.generations[0];
+        imageUrl = gen.img;
+        break;
       }
     }
 
-    throw new Error("Image generation timed out. Please try again.");
+    if (!imageUrl) {
+      throw new Error("Image generation timed out. The servers might be busy — please try again.");
+    }
+
+    return new Response(
+      JSON.stringify({
+        imageUrl,
+        message: "Your image is ready! ✨ Powered by Stable Horde AI",
+        success: true,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (error) {
     console.error("Generate image error:", error);
     return new Response(
