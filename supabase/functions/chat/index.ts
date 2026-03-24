@@ -301,8 +301,13 @@ async function performWebSearch(query: string): Promise<{ context: string; sourc
   }
 }
 
-function buildSystemPrompt(languageHint: string, searchData: { context: string; sources: string[] } | null): string {
+function buildSystemPrompt(languageHint: string, searchData: { context: string; sources: string[] } | null, selectedModel?: string): string {
   let prompt = `${BASE_SYSTEM_PROMPT}\n\nDetected user language hint: ${languageHint}.`;
+
+  // Add model-specific identity instructions (only for AgentRouter models, not default)
+  if (selectedModel && MODEL_IDENTITY_INSTRUCTIONS[selectedModel]) {
+    prompt += MODEL_IDENTITY_INSTRUCTIONS[selectedModel];
+  }
 
   if (searchData) {
     const sourceLine = searchData.sources.length
