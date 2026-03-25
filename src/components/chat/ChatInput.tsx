@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Sparkles, Mic, Square, Loader2 } from 'lucide-react';
+import { Send, Sparkles, Mic, Square, Loader2, ImagePlus, X } from 'lucide-react';
 import { useElevenLabsSTT } from '@/hooks/useElevenLabsSTT';
 
 interface ChatInputProps {
-  onSend: (message: string) => void;
+  onSend: (message: string, files?: File[]) => void;
   isLoading: boolean;
   disabled?: boolean;
   onStop?: () => void;
@@ -13,9 +13,22 @@ interface ChatInputProps {
 export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const { startRecording, stopRecording, cancelRecording, isRecording, isProcessing } = useElevenLabsSTT();
+  const { startRecording, stopRecording, isRecording, isProcessing } = useElevenLabsSTT();
+
+  const previews = useMemo(
+    () => selectedFiles.map((file) => ({ file, url: URL.createObjectURL(file) })),
+    [selectedFiles],
+  );
+
+  useEffect(() => {
+    return () => {
+      previews.forEach((preview) => URL.revokeObjectURL(preview.url));
+    };
+  }, [previews]);
 
   // Auto-focus on mount
   useEffect(() => {
@@ -55,14 +68,33 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim() && !isLoading && !disabled) {
+    if ((message.trim() || selectedFiles.length > 0) && !isLoading && !disabled) {
       textareaRef.current?.blur();
-      onSend(message.trim());
+      onSend(message.trim(), selectedFiles);
       setMessage('');
+      setSelectedFiles([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
     }
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const incomingFiles = Array.from(event.target.files || []).filter((file) => file.type.startsWith('image/'));
+    if (!incomingFiles.length) return;
+
+    setSelectedFiles((prev) => [...prev, ...incomingFiles].slice(0, 4));
+
+    if (event.target) {
+      event.target.value = '';
+    }
+  };
+
+  const removeFile = (fileName: string) => {
+    setSelectedFiles((prev) => prev.filter((file) => `${file.name}-${file.size}` !== fileName));
   };
 
   const handleStop = () => {
@@ -71,7 +103,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
     }
   };
 
-  const canSend = message.trim() && !isLoading && !disabled;
+  const canSend = (!!message.trim() || selectedFiles.length > 0) && !isLoading && !disabled;
 
   return (
     <div className="p-3 sm:p-4 lg:p-6 bg-gradient-to-t from-background via-background/98 to-transparent safe-area-inset-bottom">
@@ -129,7 +161,39 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
             <div className="absolute inset-0 backdrop-blur-2xl" />
 
             {/* Content */}
-            <div className="relative flex items-end gap-2 sm:gap-3 p-3 sm:p-4">
+            <div className="relative p-3 sm:p-4 space-y-3">
+              {previews.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                  {previews.map(({ file, url }) => {
+                    const fileKey = `${file.name}-${file.size}`;
+
+                    return (
+                      <div key={fileKey} className="relative w-20 h-20 rounded-2xl overflow-hidden border border-border/30 bg-secondary/40 flex-shrink-0 shadow-lg">
+                        <img src={url} alt={file.name} className="w-full h-full object-cover" loading="lazy" />
+                        <button
+                          type="button"
+                          onClick={() => removeFile(fileKey)}
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-background/80 backdrop-blur text-foreground/80 hover:text-foreground border border-border/30 flex items-center justify-center"
+                          aria-label={`Remove ${file.name}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileChange}
+                className="hidden"
+              />
+
+              <div className="flex items-end gap-2 sm:gap-3">
               {/* AI Sparkle indicator */}
               <motion.div 
                 className="hidden sm:flex items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 mb-0.5 relative overflow-hidden"
@@ -153,24 +217,36 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
                 <Sparkles className={`w-5 h-5 relative z-10 transition-all duration-300 ${isLoading ? 'text-primary animate-pulse' : 'text-primary/60'}`} />
               </motion.div>
               
-              {/* Input Area */}
-              <div className="flex-1 relative min-w-0">
-                <textarea
-                  ref={textareaRef}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setIsFocused(false)}
-                  placeholder={isRecording ? "🎤 Listening..." : "Ask HyperSYS anything..."}
-                  disabled={disabled || isRecording}
-                  rows={1}
-                  aria-label="Message input"
-                  className="w-full bg-transparent border-0 resize-none focus:outline-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 py-2.5 sm:py-3 px-1 max-h-[150px] scrollbar-thin text-sm sm:text-[15px] leading-relaxed font-medium"
-                />
-              </div>
+                {/* Input Area */}
+                <div className="flex-1 relative min-w-0">
+                  <textarea
+                    ref={textareaRef}
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                    placeholder={isRecording ? "🎤 Listening..." : "Ask HyperSYS anything or upload an image..."}
+                    disabled={disabled || isRecording}
+                    rows={1}
+                    aria-label="Message input"
+                    className="w-full bg-transparent border-0 resize-none focus:outline-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50 py-2.5 sm:py-3 px-1 max-h-[150px] scrollbar-thin text-sm sm:text-[15px] leading-relaxed font-medium"
+                  />
+                </div>
 
-              {/* Action buttons */}
-              <div className="flex items-center gap-2 flex-shrink-0 mb-0.5">
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 flex-shrink-0 mb-0.5">
+                  <motion.button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading || disabled}
+                    className="relative w-10 h-10 rounded-xl flex items-center justify-center bg-secondary/60 text-muted-foreground/60 hover:text-foreground border border-border/30 hover:border-primary/30 transition-all duration-300 overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+                    whileHover={{ scale: isLoading || disabled ? 1 : 1.05 }}
+                    whileTap={{ scale: isLoading || disabled ? 1 : 0.95 }}
+                    aria-label="Upload image"
+                  >
+                    <ImagePlus className="w-[18px] h-[18px]" />
+                  </motion.button>
+
                 {/* Voice button - ElevenLabs powered */}
                 <motion.button
                   type="button"
@@ -206,56 +282,57 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
                   )}
                 </motion.button>
 
-                {/* Send/Stop button */}
-                <AnimatePresence mode="wait">
-                  {isLoading ? (
-                    <motion.button
-                      key="stop"
-                      type="button"
-                      onClick={handleStop}
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.8, opacity: 0 }}
-                      className="relative w-11 h-11 rounded-xl flex items-center justify-center bg-destructive/20 text-destructive border border-destructive/30 hover:bg-destructive/30 transition-all duration-200"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      aria-label="Stop generating"
-                    >
-                      <Square className="w-4 h-4 fill-current" />
-                    </motion.button>
-                  ) : (
-                    <motion.button
-                      key="send"
-                      type="submit"
-                      disabled={!canSend}
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.8, opacity: 0 }}
-                      aria-label="Send message"
-                      className={`
-                        relative w-11 h-11 rounded-xl flex items-center justify-center
-                        transition-all duration-300 overflow-hidden
-                        ${canSend 
-                          ? 'bg-gradient-to-br from-primary via-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/30' 
-                          : 'bg-muted/50 text-muted-foreground/30 cursor-not-allowed'
-                        }
-                      `}
-                      whileHover={canSend ? { scale: 1.08, y: -2 } : {}}
-                      whileTap={canSend ? { scale: 0.92 } : {}}
-                    >
-                      {canSend && (
-                        <motion.div 
-                          className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/20 to-transparent"
-                          initial={{ x: '-100%' }}
-                          animate={{ x: '100%' }}
-                          transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 2 }}
-                        />
-                      )}
-                      <div className={`absolute inset-0 rounded-xl border ${canSend ? 'border-primary/50' : 'border-border/20'}`} />
-                      <Send className="w-[18px] h-[18px] relative z-10" />
-                    </motion.button>
-                  )}
-                </AnimatePresence>
+                  {/* Send/Stop button */}
+                  <AnimatePresence mode="wait">
+                    {isLoading ? (
+                      <motion.button
+                        key="stop"
+                        type="button"
+                        onClick={handleStop}
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.8, opacity: 0 }}
+                        className="relative w-11 h-11 rounded-xl flex items-center justify-center bg-destructive/20 text-destructive border border-destructive/30 hover:bg-destructive/30 transition-all duration-200"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        aria-label="Stop generating"
+                      >
+                        <Square className="w-4 h-4 fill-current" />
+                      </motion.button>
+                    ) : (
+                      <motion.button
+                        key="send"
+                        type="submit"
+                        disabled={!canSend}
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.8, opacity: 0 }}
+                        aria-label="Send message"
+                        className={`
+                          relative w-11 h-11 rounded-xl flex items-center justify-center
+                          transition-all duration-300 overflow-hidden
+                          ${canSend 
+                            ? 'bg-gradient-to-br from-primary via-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/30' 
+                            : 'bg-muted/50 text-muted-foreground/30 cursor-not-allowed'
+                          }
+                        `}
+                        whileHover={canSend ? { scale: 1.08, y: -2 } : {}}
+                        whileTap={canSend ? { scale: 0.92 } : {}}
+                      >
+                        {canSend && (
+                          <motion.div 
+                            className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/20 to-transparent"
+                            initial={{ x: '-100%' }}
+                            animate={{ x: '100%' }}
+                            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 2 }}
+                          />
+                        )}
+                        <div className={`absolute inset-0 rounded-xl border ${canSend ? 'border-primary/50' : 'border-border/20'}`} />
+                        <Send className="w-[18px] h-[18px] relative z-10" />
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </div>
           </div>
