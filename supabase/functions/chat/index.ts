@@ -183,10 +183,10 @@ Remember: You're the world's most lovable, funny, smart, and genuine friend that
 
 // AgentRouter model mapping
 const AGENTROUTER_MODELS: Record<string, string> = {
-  coder: "anthropic/claude-opus-4-0",
-  thinker: "deepseek/deepseek-r1-0528",
-  overall: "deepseek/deepseek-chat-v3-0324",
-  casual: "zhipu-ai/glm-4-plus",
+  coder: "opus-4.6",
+  thinker: "deepseek-r1-0528",
+  overall: "deepseek-v3.2",
+  casual: "glm-4.6",
 };
 
 // Custom identity instructions per model (appended to system prompt)
@@ -319,6 +319,183 @@ function buildSystemPrompt(languageHint: string, searchData: { context: string; 
   return prompt;
 }
 
+function extractTextFromContent(content: unknown): string {
+  if (typeof content === "string") return content;
+
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && typeof (item as { text?: unknown }).text === "string") {
+          return (item as { text: string }).text;
+        }
+        return "";
+      })
+      .join("\n")
+      .trim();
+  }
+
+  return "";
+}
+
+function extractTextFromOpenAIResponse(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+
+  const record = payload as { choices?: Array<{ message?: { content?: unknown } }> };
+  const messageContent = record.choices?.[0]?.message?.content;
+  return extractTextFromContent(messageContent);
+}
+
+function isHtmlChallenge(text: string): boolean {
+  return /<!doctypehtml>|aliyun_waf|captcha-element/i.test(text);
+}
+
+function buildSSEBody(text: string): string {
+  const safeText = text.trim() || "I couldn't generate a reply this time.";
+  const chunks = safeText.match(/.{1,220}(?:\s|$)/g) || [safeText];
+
+  return `${chunks
+    .map((chunk) => `data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}`)
+    .join("\n\n")}\n\ndata: [DONE]\n\n`;
+}
+
+function createSSETextResponse(text: string): Response {
+  return new Response(buildSSEBody(text), {
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
+  const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+  if (!match) return null;
+
+  return {
+    mimeType: match[1],
+    data: match[2],
+  };
+}
+
+async function requestMistralCompletion(messages: Array<{ role: string; content: string }>): Promise<string> {
+  const mistralApiKey = Deno.env.get("MISTRAL_API_KEY");
+  if (!mistralApiKey) throw new Error("MISTRAL_API_KEY is not configured");
+
+  const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${mistralApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "mistral-large-latest",
+      messages,
+      stream: false,
+      temperature: 0.45,
+      top_p: 0.9,
+      max_tokens: 1200,
+    }),
+  });
+
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(raw || `Mistral API error: ${response.status}`);
+  }
+
+  const parsed = JSON.parse(raw);
+  const text = extractTextFromOpenAIResponse(parsed);
+  if (!text) throw new Error("Empty Mistral response");
+  return text;
+}
+
+async function requestAgentRouterCompletion(messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
+  const agentRouterKey = Deno.env.get("AGENTROUTER_API_KEY");
+  if (!agentRouterKey) throw new Error("AGENTROUTER_API_KEY is not configured");
+
+  const response = await fetch("https://agentrouter.org/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${agentRouterKey}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "User-Agent": "Mozilla/5.0 (compatible; HyperSYS/1.0)",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: false,
+      temperature: 0.45,
+      top_p: 0.9,
+      max_tokens: 1200,
+    }),
+  });
+
+  const raw = await response.text();
+
+  if (!response.ok || isHtmlChallenge(raw)) {
+    throw new Error(raw || `AgentRouter API error: ${response.status}`);
+  }
+
+  const parsed = JSON.parse(raw);
+  const text = extractTextFromOpenAIResponse(parsed);
+  if (!text) throw new Error("Empty AgentRouter response");
+  return text;
+}
+
+async function requestGeminiVisionCompletion(prompt: string, images: Array<{ dataUrl?: string; mimeType?: string; name?: string }>): Promise<string> {
+  const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not configured");
+
+  const parts: Array<Record<string, unknown>> = [{ text: prompt }];
+
+  for (const image of images) {
+    if (!image?.dataUrl) continue;
+    const parsed = parseDataUrl(image.dataUrl);
+    if (!parsed) continue;
+
+    parts.push({
+      inlineData: {
+        mimeType: image.mimeType || parsed.mimeType,
+        data: parsed.data,
+      },
+    });
+  }
+
+  if (parts.length === 1) {
+    throw new Error("No valid images provided");
+  }
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts }],
+      generationConfig: {
+        temperature: 0.4,
+      },
+    }),
+  });
+
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(raw || `Gemini API error: ${response.status}`);
+  }
+
+  const parsed = JSON.parse(raw);
+  const text = parsed?.candidates?.[0]?.content?.parts
+    ?.map((part: { text?: string }) => part?.text || "")
+    .join("\n")
+    .trim();
+
+  if (!text) throw new Error("Empty Gemini response");
+  return text;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -359,6 +536,7 @@ serve(async (req) => {
     const body = await req.json();
     const incomingMessages = Array.isArray(body?.messages) ? body.messages : [];
     const selectedModel = typeof body?.model === "string" ? body.model : "default";
+    const incomingImages = Array.isArray(body?.images) ? body.images : [];
 
     if (!incomingMessages.length) {
       return new Response(
@@ -383,78 +561,26 @@ serve(async (req) => {
       })),
     ];
 
-    // Route to AgentRouter or default Mistral
+    if (incomingImages.length > 0) {
+      const visionText = await requestGeminiVisionCompletion(userText || "Describe this image in detail.", incomingImages);
+      return createSSETextResponse(visionText);
+    }
+
     const agentRouterModel = AGENTROUTER_MODELS[selectedModel];
 
     if (agentRouterModel) {
-      // Use AgentRouter
-      const agentRouterKey = Deno.env.get("AGENTROUTER_API_KEY");
-      if (!agentRouterKey) throw new Error("AGENTROUTER_API_KEY is not configured");
-
-      const response = await fetch("https://agentrouter.org/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${agentRouterKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: agentRouterModel,
-          messages: formattedMessages,
-          stream: true,
-          temperature: 0.45,
-          top_p: 0.9,
-          max_tokens: 1200,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("AgentRouter API error:", response.status, errorText);
-        const status = response.status === 429 ? 429 : 500;
-        return new Response(
-          JSON.stringify({ error: status === 429 ? "Rate limit exceeded." : `Model API error: ${response.status}` }),
-          { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+      try {
+        const agentRouterText = await requestAgentRouterCompletion(formattedMessages, agentRouterModel);
+        return createSSETextResponse(agentRouterText);
+      } catch (agentRouterError) {
+        console.error("AgentRouter fallback triggered:", agentRouterError);
+        const fallbackText = await requestMistralCompletion(formattedMessages);
+        return createSSETextResponse(fallbackText);
       }
-
-      return new Response(response.body, {
-        headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
-      });
-    } else {
-      // Default: Mistral
-      const mistralApiKey = Deno.env.get("MISTRAL_API_KEY");
-      if (!mistralApiKey) throw new Error("MISTRAL_API_KEY is not configured");
-
-      const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${mistralApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "mistral-large-latest",
-          messages: formattedMessages,
-          stream: true,
-          temperature: 0.45,
-          top_p: 0.9,
-          max_tokens: 1200,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Mistral API error:", response.status, errorText);
-        const status = response.status === 429 || response.status === 401 ? response.status : 500;
-        return new Response(
-          JSON.stringify({ error: status === 429 ? "Rate limit exceeded." : status === 401 ? "Model API key is invalid." : `Model API error: ${response.status}` }),
-          { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      return new Response(response.body, {
-        headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
-      });
     }
+
+    const mistralText = await requestMistralCompletion(formattedMessages);
+    return createSSETextResponse(mistralText);
   } catch (error) {
     console.error("Chat function error:", error);
     return new Response(

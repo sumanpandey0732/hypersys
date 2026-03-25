@@ -7,11 +7,13 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useState } from 'react';
 import { useElevenLabsTTS } from '@/hooks/useElevenLabsTTS';
 import { sanitizeAssistantText } from '@/lib/chat-format';
+import type { ChatAttachment } from './types';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;
+  attachments?: ChatAttachment[];
 }
 
 function CodeBlock({ language, children }: { language: string; children: string }) {
@@ -52,7 +54,7 @@ function CodeBlock({ language, children }: { language: string; children: string 
   );
 }
 
-export default function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
+export default function ChatMessage({ role, content, isStreaming, attachments = [] }: ChatMessageProps) {
   const isUser = role === 'user';
   const [copiedAll, setCopiedAll] = useState(false);
   const { speak, stop, isSpeaking, isLoading: isTTSLoading } = useElevenLabsTTS();
@@ -80,7 +82,16 @@ export default function ChatMessage({ role, content, isStreaming }: ChatMessageP
       {isUser ? (
         <div className="max-w-[85%] sm:max-w-[75%]">
           <div className="bg-gradient-to-br from-primary/20 via-primary/15 to-primary/10 border border-primary/30 rounded-2xl rounded-br-md px-5 py-3.5 shadow-lg shadow-primary/10">
-            <p className="text-sm sm:text-[15px] leading-relaxed text-foreground font-medium">{content}</p>
+            {attachments.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {attachments.map((attachment) => (
+                  <div key={attachment.id} className="rounded-2xl overflow-hidden border border-primary/20 bg-background/50">
+                    <img src={attachment.url} alt={attachment.name} className="w-full h-32 object-cover block" loading="lazy" />
+                  </div>
+                ))}
+              </div>
+            )}
+            {content && <p className="text-sm sm:text-[15px] leading-relaxed text-foreground font-medium">{content}</p>}
           </div>
         </div>
       ) : (
