@@ -5,6 +5,7 @@ import ChatSidebar from '@/components/chat/ChatSidebar';
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
+import type { ChatAttachment } from '@/components/chat/types';
 import { Menu, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,6 +16,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   imageUrl?: string;
+  attachments?: ChatAttachment[];
 }
 
 interface Conversation {
@@ -25,6 +27,14 @@ interface Conversation {
 }
 
 const REQUEST_TIMEOUT_MS = 45_000;
+
+const fileToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
 
 export default function Chat() {
   const { user, isGuest } = useAuth();
@@ -76,28 +86,50 @@ export default function Chat() {
     await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
   };
 
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return;
+  const handleSendMessage = async (content: string, files: File[] = []) => {
+    if ((!content.trim() && files.length === 0) || isLoading) return;
+
+    const trimmedContent = content.trim();
+    const pendingAttachments: ChatAttachment[] = await Promise.all(
+      files.map(async (file) => ({
+        id: crypto.randomUUID(),
+        name: file.name,
+        url: await fileToDataUrl(file),
+        type: 'image' as const,
+        mimeType: file.type,
+      })),
+    );
+
+    const requestContent = trimmedContent || (pendingAttachments.length > 0 ? 'Describe this image in detail.' : '');
 
     let convId = activeConversationId;
     const isAuthenticated = !!user && !isGuest;
 
     if (!convId && isAuthenticated) {
-      convId = await createConversation(content);
+      convId = await createConversation(trimmedContent || pendingAttachments[0]?.name || 'New chat');
       if (!convId) return;
     }
 
-    const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content };
+    const userMessage: Message = { id: crypto.randomUUID(), role: 'user', content: trimmedContent, attachments: pendingAttachments };
     const assistantMessage: Message = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-    const allMessages = [...messages, userMessage];
+    const allMessages = [
+      ...messages.map((message) => ({ role: message.role, content: message.content })),
+      { role: 'user' as const, content: requestContent },
+    ];
 
     setMessages([...messages, userMessage, assistantMessage]);
 
-    if (convId && isAuthenticated) await saveMessage(convId, 'user', content);
+    if (convId && isAuthenticated) {
+      await saveMessage(
+        convId,
+        'user',
+        trimmedContent || (pendingAttachments.length > 0 ? `[Image uploaded] ${pendingAttachments.map((attachment) => attachment.name).join(', ')}` : requestContent),
+      );
+    }
 
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
 
-    const isImageRequest = isImageGenerationRequest(content);
+    const isImageRequest = isImageGenerationRequest(requestContent);
 
     setIsLoading(true);
     abortControllerRef.current = new AbortController();
@@ -127,8 +159,13 @@ export default function Chat() {
         headers,
         body: JSON.stringify({
           messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
-          prompt: content,
+          prompt: requestContent,
           model: selectedModel,
+          images: pendingAttachments.map((attachment) => ({
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            dataUrl: attachment.url,
+          })),
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -146,7 +183,7 @@ export default function Chat() {
 
       if (isImageRequest) {
         const data = await response.json();
-        const generatedImageUrl = data.imageUrl || data?.data?.[0]?.url || null;
+        const generatedImageUrl = data.imageDataUrl || data.imageUrl || data?.data?.[0]?.url || null;
 
         if (!generatedImageUrl) {
           throw new Error(data.error || 'Failed to generate image');
@@ -359,7 +396,7 @@ export default function Chat() {
             ) : (
               <motion.div key="messages" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-3 sm:space-y-4">
                 {messages.map((msg, index) => (
-                  <ChatMessage key={msg.id} role={msg.role} content={msg.content} isStreaming={isLoading && msg.role === 'assistant' && index === messages.length - 1} />
+                  <ChatMessage key={msg.id} role={msg.role} content={msg.content} attachments={msg.attachments} isStreaming={isLoading && msg.role === 'assistant' && index === messages.length - 1} />
                 ))}
                 <div ref={messagesEndRef} className="h-4" />
               </motion.div>
