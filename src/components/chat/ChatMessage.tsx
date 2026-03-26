@@ -1,12 +1,12 @@
 import { motion } from 'framer-motion';
-import { Sparkles, Copy, Check, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import { Sparkles, Copy, Check, Volume2, VolumeX, Loader2, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useState } from 'react';
 import { useElevenLabsTTS } from '@/hooks/useElevenLabsTTS';
-import { sanitizeAssistantText } from '@/lib/chat-format';
+import { extractFirstMarkdownImage, sanitizeAssistantText, stripMarkdownImages } from '@/lib/chat-format';
 import type { ChatAttachment } from './types';
 
 interface ChatMessageProps {
@@ -14,6 +14,7 @@ interface ChatMessageProps {
   content: string;
   isStreaming?: boolean;
   attachments?: ChatAttachment[];
+  imageUrl?: string;
 }
 
 function CodeBlock({ language, children }: { language: string; children: string }) {
@@ -54,22 +55,24 @@ function CodeBlock({ language, children }: { language: string; children: string 
   );
 }
 
-export default function ChatMessage({ role, content, isStreaming, attachments = [] }: ChatMessageProps) {
+export default function ChatMessage({ role, content, isStreaming, attachments = [], imageUrl }: ChatMessageProps) {
   const isUser = role === 'user';
   const [copiedAll, setCopiedAll] = useState(false);
   const { speak, stop, isSpeaking, isLoading: isTTSLoading } = useElevenLabsTTS();
 
   const displayContent = isUser ? content : sanitizeAssistantText(content);
+  const generatedImageUrl = !isUser ? imageUrl || extractFirstMarkdownImage(displayContent) : undefined;
+  const textOnlyContent = !isUser ? stripMarkdownImages(displayContent) : displayContent;
 
   const handleCopyAll = async () => {
-    await navigator.clipboard.writeText(displayContent);
+    await navigator.clipboard.writeText(textOnlyContent || displayContent);
     setCopiedAll(true);
     setTimeout(() => setCopiedAll(false), 2000);
   };
 
   const handleSpeak = () => {
     if (isSpeaking) stop();
-    else speak(displayContent);
+    else speak(textOnlyContent || displayContent);
   };
 
   return (
@@ -86,7 +89,14 @@ export default function ChatMessage({ role, content, isStreaming, attachments = 
               <div className="grid grid-cols-2 gap-2 mb-3">
                 {attachments.map((attachment) => (
                   <div key={attachment.id} className="rounded-2xl overflow-hidden border border-primary/20 bg-background/50">
-                    <img src={attachment.url} alt={attachment.name} className="w-full h-32 object-cover block" loading="lazy" />
+                    {attachment.type === 'image' ? (
+                      <img src={attachment.url} alt={attachment.name} className="w-full h-32 object-cover block" loading="lazy" />
+                    ) : (
+                      <div className="h-32 flex flex-col items-center justify-center gap-2 px-3 text-center bg-background/60">
+                        <FileText className="w-6 h-6 text-primary" />
+                        <p className="text-xs text-foreground/80 line-clamp-2">{attachment.name}</p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -118,7 +128,13 @@ export default function ChatMessage({ role, content, isStreaming, attachments = 
 
           {/* Content */}
           <div className="w-full">
-            {content ? (
+            {generatedImageUrl && (
+              <div className="mb-5 rounded-3xl overflow-hidden border border-border/30 bg-card shadow-2xl">
+                <img src={generatedImageUrl} alt="Generated image" className="w-full h-auto block" loading="lazy" />
+              </div>
+            )}
+
+            {textOnlyContent ? (
               <div className="prose prose-lg sm:prose-xl prose-invert max-w-none">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -195,7 +211,7 @@ export default function ChatMessage({ role, content, isStreaming, attachments = 
                     },
                   }}
                 >
-                  {displayContent}
+                  {textOnlyContent}
                 </ReactMarkdown>
               </div>
             ) : isStreaming ? (

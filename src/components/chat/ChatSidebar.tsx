@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, MessageSquare, Trash2, LogOut, ChevronLeft, Sparkles, Bot } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, LogOut, ChevronLeft, Sparkles, Bot, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
@@ -11,14 +11,21 @@ export interface AIModel {
   label: string;
   description: string;
   emoji: string;
+  featured?: boolean;
 }
 
 export const AI_MODELS: AIModel[] = [
-  { id: 'default', name: 'HyperSYS', label: 'Default', description: 'Balanced & friendly', emoji: '✨' },
-  { id: 'coder', name: 'Opus 4.6', label: 'Coder', description: 'Code specialist', emoji: '💻' },
-  { id: 'thinker', name: 'R1-0528', label: 'Thinker', description: 'Deep reasoning', emoji: '🧠' },
-  { id: 'overall', name: 'V3.2', label: 'Overall', description: 'All-rounder', emoji: '🌟' },
-  { id: 'casual', name: 'GLM 4.6', label: 'Casual', description: 'Light & casual', emoji: '😎' },
+  { id: 'default', name: 'HyperSYS', label: 'Default', description: 'Mistral flagship persona', emoji: '✨', featured: true },
+  { id: 'coder', name: 'Qwen3 Coder', label: 'Coder', description: 'Elite coding & debugging', emoji: '💻', featured: true },
+  { id: 'thinker', name: 'DeepSeek R1', label: 'Thinker', description: 'Deep reasoning & strategy', emoji: '🧠', featured: true },
+  { id: 'overall', name: 'DeepSeek V3.2', label: 'Overall', description: 'Powerful all-rounder', emoji: '🌟', featured: true },
+  { id: 'casual', name: 'Qwen3 Next', label: 'Casual', description: 'Fast conversational vibe', emoji: '😎', featured: true },
+  { id: 'router-free', name: 'openrouter/free', label: 'Free Auto', description: 'Best available free route', emoji: '🧭' },
+  { id: 'study', name: 'Llama 3.3 70B', label: 'Study', description: 'Homework & explanations', emoji: '📚' },
+  { id: 'glm-air', name: 'GLM 4.5 Air', label: 'Summarizer', description: 'Notes & summaries', emoji: '📝' },
+  { id: 'minimax', name: 'MiniMax M2.5', label: 'Fast', description: 'Lightweight fast answers', emoji: '⚡' },
+  { id: 'nemotron', name: 'Nemotron 3 Super', label: 'Powerful', description: 'Long context & deep work', emoji: '🧩' },
+  { id: 'trinity-mini', name: 'Trinity Mini', label: 'Mini', description: 'Quick small tasks', emoji: '🚀' },
 ];
 
 interface Conversation {
@@ -47,6 +54,8 @@ export default function ChatSidebar({
 }: ChatSidebarProps) {
   const { user, signOut } = useAuth();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [showAllModels, setShowAllModels] = useState(false);
+  const visibleModels = showAllModels ? AI_MODELS : AI_MODELS.filter((model) => model.featured);
 
   return (
     <>
@@ -90,7 +99,7 @@ export default function ChatSidebar({
                 <p className="text-xs font-medium text-sidebar-foreground/50 uppercase tracking-wider">AI Model</p>
               </div>
               <div className="space-y-1">
-                {AI_MODELS.map((model) => (
+                {visibleModels.map((model) => (
                   <button
                     key={model.id}
                     onClick={() => onSelectModel(model.id)}
@@ -106,6 +115,7 @@ export default function ChatSidebar({
                         <span className="font-medium truncate">{model.label}</span>
                         <span className="text-[10px] text-sidebar-foreground/40 truncate">{model.name}</span>
                       </div>
+                      <p className="text-[11px] text-sidebar-foreground/45 truncate">{model.description}</p>
                     </div>
                     {selectedModel === model.id && (
                       <motion.div
@@ -117,6 +127,16 @@ export default function ChatSidebar({
                   </button>
                 ))}
               </div>
+              {AI_MODELS.length > AI_MODELS.filter((model) => model.featured).length && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllModels((prev) => !prev)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-colors"
+                >
+                  {showAllModels ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  {showAllModels ? 'Show less' : 'Show more models'}
+                </button>
+              )}
             </div>
           </div>
 

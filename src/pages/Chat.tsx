@@ -9,7 +9,7 @@ import type { ChatAttachment } from '@/components/chat/types';
 import { Menu, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
-import { isImageGenerationRequest, sanitizeAssistantText } from '@/lib/chat-format';
+import { extractFirstMarkdownImage, isImageGenerationRequest, sanitizeAssistantText } from '@/lib/chat-format';
 
 interface Message {
   id: string;
@@ -66,7 +66,12 @@ export default function Chat() {
       .select('*')
       .eq('conversation_id', activeConversationId)
       .order('created_at', { ascending: true });
-    setMessages(data?.map((m) => ({ id: m.id, role: m.role as 'user' | 'assistant', content: m.content })) || []);
+    setMessages(data?.map((m) => ({
+      id: m.id,
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+      imageUrl: m.role === 'assistant' ? extractFirstMarkdownImage(m.content) : undefined,
+    })) || []);
   }, [activeConversationId]);
 
   useEffect(() => { loadMessages(); }, [loadMessages]);
@@ -77,7 +82,6 @@ export default function Chat() {
     const { data, error } = await supabase.from('conversations').insert({ user_id: user.id, title }).select().single();
     if (error) { toast.error('Failed to create conversation'); return null; }
     setConversations((prev) => [data, ...prev]);
-    setActiveConversationId(data.id);
     return data.id;
   };
 
@@ -95,8 +99,9 @@ export default function Chat() {
         id: crypto.randomUUID(),
         name: file.name,
         url: await fileToDataUrl(file),
-        type: 'image' as const,
+        type: file.type.startsWith('image/') ? 'image' as const : 'file' as const,
         mimeType: file.type,
+        size: file.size,
       })),
     );
 
@@ -117,7 +122,7 @@ export default function Chat() {
       { role: 'user' as const, content: requestContent },
     ];
 
-    setMessages([...messages, userMessage, assistantMessage]);
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
 
     if (convId && isAuthenticated) {
       await saveMessage(
@@ -190,7 +195,7 @@ export default function Chat() {
         }
 
         const imageMessage = sanitizeAssistantText(data.message || 'Image generated successfully! ✨');
-        const imageContent = `### **Generated image**\n\n![Generated Image](${generatedImageUrl})${imageMessage ? `\n\n${imageMessage}` : ''}`;
+        const imageContent = `![Generated Image](${generatedImageUrl})${imageMessage ? `\n\n${imageMessage}` : ''}`;
 
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: imageContent, imageUrl: generatedImageUrl } : m)),
@@ -276,6 +281,10 @@ export default function Chat() {
             await saveMessage(convId, 'assistant', fallback);
           }
         }
+      }
+
+      if (convId && isAuthenticated && activeConversationId !== convId) {
+        setActiveConversationId(convId);
       }
 
       if (isAuthenticated) loadConversations();
@@ -396,7 +405,7 @@ export default function Chat() {
             ) : (
               <motion.div key="messages" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-3 sm:space-y-4">
                 {messages.map((msg, index) => (
-                  <ChatMessage key={msg.id} role={msg.role} content={msg.content} attachments={msg.attachments} isStreaming={isLoading && msg.role === 'assistant' && index === messages.length - 1} />
+                  <ChatMessage key={msg.id} role={msg.role} content={msg.content} imageUrl={msg.imageUrl} attachments={msg.attachments} isStreaming={isLoading && msg.role === 'assistant' && index === messages.length - 1} />
                 ))}
                 <div ref={messagesEndRef} className="h-4" />
               </motion.div>
