@@ -181,18 +181,24 @@ When web results are provided, integrate them naturally and cite sources casuall
 
 Remember: You're the world's most lovable, funny, smart, and genuine friend that everyone wishes they had! 🔥`;
 
-// AgentRouter model mapping
-const AGENTROUTER_MODELS: Record<string, string> = {
-  coder: "opus-4.6",
-  thinker: "deepseek-r1-0528",
-  overall: "deepseek-v3.2",
-  casual: "glm-4.6",
+// OpenRouter model mapping
+const OPENROUTER_MODELS: Record<string, string> = {
+  coder: "qwen/qwen3-coder:free",
+  thinker: "deepseek/deepseek-r1:free",
+  overall: "deepseek/deepseek-v3.2",
+  casual: "qwen/qwen3-next-80b-a3b-instruct:free",
+  "router-free": "openrouter/free",
+  study: "meta-llama/llama-3.3-70b-instruct:free",
+  "glm-air": "z-ai/glm-4.5-air:free",
+  minimax: "minimax/minimax-m2.5:free",
+  nemotron: "nvidia/nemotron-3-super-120b-a12b:free",
+  "trinity-mini": "arcee-ai/trinity-mini:free",
 };
 
 // Custom identity instructions per model (appended to system prompt)
 const MODEL_IDENTITY_INSTRUCTIONS: Record<string, string> = {
   coder: `\n\n## YOUR IDENTITY: OPUS 4.6 — THE CODE MASTER 💻
-You are Opus 4.6, an elite coding specialist. Your personality:
+You are HyperSYS Coder, an elite coding specialist powered for clean engineering. Your personality:
 - You LIVE and BREATHE code. Every problem is a coding challenge to you.
 - When someone asks a question, think about it from a developer's perspective first.
 - Use code examples, snippets, and technical explanations naturally.
@@ -224,7 +230,7 @@ You are V3.2, the ultimate versatile AI companion. Your personality:
 - Your superpower is versatility — you make everything look effortless.`,
 
   casual: `\n\n## YOUR IDENTITY: GLM 4.6 — THE CHILL FRIEND 😎
-You are GLM 4.6, the most relaxed and fun AI to chat with. Your personality:
+You are HyperSYS Casual, the most relaxed and fun AI to chat with. Your personality:
 - You're the ULTIMATE chill friend — laid back, funny, and easygoing.
 - Keep responses short, punchy, and entertaining.
 - Use slang, memes references, and casual language naturally.
@@ -233,7 +239,50 @@ You are GLM 4.6, the most relaxed and fun AI to chat with. Your personality:
 - Master of one-liners, comebacks, and making people smile.
 - You're the friend everyone wants to text at 2 AM for random conversations.
 - Emojis are your love language 😂🔥💯`,
+
+  "router-free": `\n\n## YOUR IDENTITY: FREE AUTO ROUTER 🧭
+You are a reliable general-purpose model chooser.
+- Stay balanced, accurate, and polished.
+- Prioritize clarity over fluff.
+- Format answers into neat sections with strong headings and clean bullet spacing.`,
+
+  study: `\n\n## YOUR IDENTITY: STUDY MENTOR 📚
+You explain concepts like a top tutor.
+- Teach step by step.
+- Use examples, memory tricks, and mini summaries.
+- End with a short recap when the topic is complex.`,
+
+  "glm-air": `\n\n## YOUR IDENTITY: SUMMARY ENGINE 📝
+You are excellent at distilling information.
+- Organize content into crisp sections.
+- Use bullets, tables, and key takeaways.
+- Remove noise and keep the best signal.`,
+
+  minimax: `\n\n## YOUR IDENTITY: FAST RESPONSE ENGINE ⚡
+You answer quickly without becoming shallow.
+- Keep outputs concise but useful.
+- Prefer sharp bullets and direct recommendations.
+- Avoid rambling.`,
+
+  nemotron: `\n\n## YOUR IDENTITY: LONG-CONTEXT STRATEGIST 🧩
+You excel at large context and multi-part reasoning.
+- Synthesize long inputs into coherent structure.
+- Surface tradeoffs, dependencies, and edge cases.
+- Use sections, tables, and decision-ready conclusions.`,
+
+  "trinity-mini": `\n\n## YOUR IDENTITY: MINI POWERHOUSE 🚀
+You are fast, focused, and surprisingly capable.
+- Give compact, structured answers.
+- Prioritize action items and next steps.
+- Keep tone energetic and smart.`,
 };
+
+const OUTPUT_POLISH_INSTRUCTIONS = `\n\n## OUTPUT POLISH (MANDATORY)
+- Never return raw JSON, escaped markdown, or messy provider text.
+- Always produce clean, human-readable markdown.
+- Use clear headings, blank lines, and polished bullet lists.
+- If sharing code, explain it briefly before or after the snippet.
+- If the answer is long, end with a short takeaway section.`;
 
 function isLikelyImageRequest(query: string): boolean {
   return IMAGE_REQUEST_PATTERN.test(query);
@@ -308,6 +357,8 @@ function buildSystemPrompt(languageHint: string, searchData: { context: string; 
   if (selectedModel && MODEL_IDENTITY_INSTRUCTIONS[selectedModel]) {
     prompt += MODEL_IDENTITY_INSTRUCTIONS[selectedModel];
   }
+
+  prompt += OUTPUT_POLISH_INSTRUCTIONS;
 
   if (searchData) {
     const sourceLine = searchData.sources.length
@@ -411,17 +462,21 @@ async function requestMistralCompletion(messages: Array<{ role: string; content:
   return text;
 }
 
-async function requestAgentRouterCompletion(messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
-  const agentRouterKey = Deno.env.get("AGENTROUTER_API_KEY");
-  if (!agentRouterKey) throw new Error("AGENTROUTER_API_KEY is not configured");
+async function requestOpenRouterCompletion(messages: Array<{ role: string; content: string }>, selectedModel: string): Promise<string> {
+  const openRouterKey = Deno.env.get("API_KEY");
+  if (!openRouterKey) throw new Error("API_KEY is not configured");
 
-  const response = await fetch("https://agentrouter.org/v1/chat/completions", {
+  const model = OPENROUTER_MODELS[selectedModel];
+  if (!model) throw new Error(`Unknown OpenRouter model: ${selectedModel}`);
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${agentRouterKey}`,
+      Authorization: `Bearer ${openRouterKey}`,
       "Content-Type": "application/json",
       Accept: "application/json",
-      "User-Agent": "Mozilla/5.0 (compatible; HyperSYS/1.0)",
+      "HTTP-Referer": "https://hypersys.lovable.app",
+      "X-Title": "HyperSYS AI",
     },
     body: JSON.stringify({
       model,
@@ -430,18 +485,19 @@ async function requestAgentRouterCompletion(messages: Array<{ role: string; cont
       temperature: 0.45,
       top_p: 0.9,
       max_tokens: 1200,
+      ...(selectedModel === "thinker" ? { reasoning: { effort: "high" } } : {}),
     }),
   });
 
   const raw = await response.text();
 
   if (!response.ok || isHtmlChallenge(raw)) {
-    throw new Error(raw || `AgentRouter API error: ${response.status}`);
+    throw new Error(raw || `OpenRouter API error: ${response.status}`);
   }
 
   const parsed = JSON.parse(raw);
   const text = extractTextFromOpenAIResponse(parsed);
-  if (!text) throw new Error("Empty AgentRouter response");
+  if (!text) throw new Error("Empty OpenRouter response");
   return text;
 }
 
@@ -562,18 +618,19 @@ serve(async (req) => {
     ];
 
     if (incomingImages.length > 0) {
-      const visionText = await requestGeminiVisionCompletion(userText || "Describe this image in detail.", incomingImages);
+      const visionPrompt = `${userText || "Analyze the uploaded content."}\n\nReturn a clean structured answer with:\n\n## Summary\n\n## Key details\n\n## Important text/items\n\n## Helpful next step`;
+      const visionText = await requestGeminiVisionCompletion(visionPrompt, incomingImages);
       return createSSETextResponse(visionText);
     }
 
-    const agentRouterModel = AGENTROUTER_MODELS[selectedModel];
+    const openRouterModel = OPENROUTER_MODELS[selectedModel];
 
-    if (agentRouterModel) {
+    if (openRouterModel) {
       try {
-        const agentRouterText = await requestAgentRouterCompletion(formattedMessages, agentRouterModel);
-        return createSSETextResponse(agentRouterText);
-      } catch (agentRouterError) {
-        console.error("AgentRouter fallback triggered:", agentRouterError);
+        const openRouterText = await requestOpenRouterCompletion(formattedMessages, selectedModel);
+        return createSSETextResponse(openRouterText);
+      } catch (openRouterError) {
+        console.error("OpenRouter fallback triggered:", openRouterError);
         const fallbackText = await requestMistralCompletion(formattedMessages);
         return createSSETextResponse(fallbackText);
       }

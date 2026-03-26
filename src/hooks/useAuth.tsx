@@ -8,7 +8,7 @@ interface AuthContextType {
   loading: boolean;
   isGuest: boolean;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: Error | null; createdAccount?: boolean }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   continueAsGuest: () => void;
@@ -46,8 +46,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  const getRedirectUrl = () => `${window.location.origin}/`;
+
+  const shouldAutoCreateAccount = (message: string) => /invalid login credentials|invalid email or password/i.test(message);
+
   const signUp = async (email: string, password: string) => {
-    const redirectUrl = `${window.location.origin}/`;
+    const redirectUrl = getRedirectUrl();
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -58,7 +62,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+
+    if (!error) {
+      return { error: null };
+    }
+
+    if (!shouldAutoCreateAccount(error.message)) {
+      return { error };
+    }
+
+    const { error: signUpError, data } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: getRedirectUrl() },
+    });
+
+    if (signUpError) {
+      return { error: signUpError };
+    }
+
+    if (data.user) {
+      return { error: null, createdAccount: true };
+    }
+
+    return { error: new Error('Unable to sign in or create account.') };
   };
 
   const signInWithGoogle = async () => {

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Sparkles, Mic, Square, Loader2, ImagePlus, X } from 'lucide-react';
+import { Send, Sparkles, Mic, Square, Loader2, ImagePlus, X, FileText } from 'lucide-react';
 import { useElevenLabsSTT } from '@/hooks/useElevenLabsSTT';
 
 interface ChatInputProps {
@@ -104,6 +104,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
   };
 
   const canSend = (!!message.trim() || selectedFiles.length > 0) && !isLoading && !disabled;
+  const isImageFile = (file: File) => file.type.startsWith('image/');
 
   return (
     <div className="p-3 sm:p-4 lg:p-6 bg-gradient-to-t from-background via-background/98 to-transparent safe-area-inset-bottom">
@@ -169,7 +170,14 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
 
                     return (
                       <div key={fileKey} className="relative w-20 h-20 rounded-2xl overflow-hidden border border-border/30 bg-secondary/40 flex-shrink-0 shadow-lg">
-                        <img src={url} alt={file.name} className="w-full h-full object-cover" loading="lazy" />
+                        {isImageFile(file) ? (
+                          <img src={url} alt={file.name} className="w-full h-full object-cover" loading="lazy" />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-2 text-center bg-secondary/60">
+                            <FileText className="w-6 h-6 text-primary" />
+                            <span className="text-[10px] leading-tight text-foreground/80 line-clamp-2">{file.name}</span>
+                          </div>
+                        )}
                         <button
                           type="button"
                           onClick={() => removeFile(fileKey)}
@@ -187,7 +195,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.pdf,.txt,.md,.json,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.js,.ts,.tsx,.jsx,.py,.html,.css"
                 multiple
                 onChange={handleFileChange}
                 className="hidden"
@@ -225,7 +233,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
                     onChange={(e) => setMessage(e.target.value)}
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setIsFocused(false)}
-                    placeholder={isRecording ? "🎤 Listening..." : "Ask HyperSYS anything or upload an image..."}
+                    placeholder={isRecording ? "🎤 Listening..." : "Ask HyperSYS anything or upload an image/file..."}
                     disabled={disabled || isRecording}
                     rows={1}
                     aria-label="Message input"
@@ -242,7 +250,7 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
                     className="relative w-10 h-10 rounded-xl flex items-center justify-center bg-secondary/60 text-muted-foreground/60 hover:text-foreground border border-border/30 hover:border-primary/30 transition-all duration-300 overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
                     whileHover={{ scale: isLoading || disabled ? 1 : 1.05 }}
                     whileTap={{ scale: isLoading || disabled ? 1 : 0.95 }}
-                    aria-label="Upload image"
+                      aria-label="Upload image or file"
                   >
                     <ImagePlus className="w-[18px] h-[18px]" />
                   </motion.button>

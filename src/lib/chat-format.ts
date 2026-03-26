@@ -9,6 +9,22 @@ export function isImageGenerationRequest(input: string): boolean {
   return IMAGE_REQUEST_PATTERNS.some((pattern) => pattern.test(input));
 }
 
+const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\((data:image\/[^)]+|https?:\/\/[^)\s]+)\)/i;
+
+export function extractFirstMarkdownImage(raw: string): string | undefined {
+  if (!raw) return undefined;
+  return raw.match(MARKDOWN_IMAGE_PATTERN)?.[1];
+}
+
+export function stripMarkdownImages(raw: string): string {
+  if (!raw) return '';
+
+  return raw
+    .replace(/!\[[^\]]*\]\((data:image\/[^)]+|https?:\/\/[^)\s]+)\)/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function extractJsonFromResponse(response: string): unknown | null {
   const withoutFences = response
     .replace(/```json\s*/gi, "")
