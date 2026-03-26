@@ -25,9 +25,11 @@ export default function Auth() {
     setLoading(true);
     try {
       if (isLogin) {
-        const { error } = await signIn(email, password);
+        const { error, createdAccount } = await signIn(email, password);
         if (error) {
           toast.error(error.message.includes('Invalid login') ? 'Invalid email or password' : error.message);
+        } else if (createdAccount) {
+          toast.success('Account created! Check your email to verify it, then sign in.');
         } else {
           toast.success('Welcome back!');
           navigate('/');
