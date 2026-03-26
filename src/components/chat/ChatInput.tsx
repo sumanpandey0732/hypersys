@@ -83,10 +83,10 @@ export default function ChatInput({ onSend, isLoading, disabled, onStop }: ChatI
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const incomingFiles = Array.from(event.target.files || []).filter((file) => file.type.startsWith('image/'));
+    const incomingFiles = Array.from(event.target.files || []);
     if (!incomingFiles.length) return;
 
-    setSelectedFiles((prev) => [...prev, ...incomingFiles].slice(0, 4));
+    setSelectedFiles((prev) => [...prev, ...incomingFiles].slice(0, 10));
 
     if (event.target) {
       event.target.value = '';
