@@ -471,12 +471,29 @@ serve(async (req) => {
     const searchData = needsWebSearch(userText) ? await performWebSearch(userText) : null;
     const systemPrompt = buildSystemPrompt(detectLanguageHint(userText), searchData);
 
+    const sanitized = incomingMessages
+      .map((msg: { role?: string; content?: unknown }) => ({
+        role: msg?.role === "assistant" ? "assistant" : "user",
+        content: (typeof msg?.content === "string" ? msg.content : extractTextFromContent(msg?.content)).trim(),
+      }))
+      // Drop empty assistant messages — providers reject them (code 3240)
+      .filter((m: { role: string; content: string }) => !(m.role === "assistant" && !m.content));
+
+    // Ensure conversation ends on a user message
+    while (sanitized.length && sanitized[sanitized.length - 1].role !== "user") {
+      sanitized.pop();
+    }
+
+    if (!sanitized.length) {
+      return new Response(
+        JSON.stringify({ error: "No valid user message" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const formattedMessages = [
       { role: "system", content: systemPrompt },
-      ...incomingMessages.map((msg: { role?: string; content?: unknown }) => ({
-        role: msg?.role === "assistant" ? "assistant" : "user",
-        content: typeof msg?.content === "string" ? msg.content : JSON.stringify(msg?.content ?? ""),
-      })),
+      ...sanitized,
     ];
 
     if (incomingImages.length > 0) {
