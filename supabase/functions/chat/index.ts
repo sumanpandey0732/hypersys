@@ -380,95 +380,39 @@ async function requestMistralCompletion(messages: Array<{ role: string; content:
   return text;
 }
 
-async function requestOpenRouterCompletion(messages: Array<{ role: string; content: string }>, selectedModel: string): Promise<string> {
-  const openRouterKey = Deno.env.get("API_KEY");
-  if (!openRouterKey) throw new Error("API_KEY is not configured");
-
-  const model = OPENROUTER_MODELS[selectedModel];
-  if (!model) throw new Error(`Unknown OpenRouter model: ${selectedModel}`);
-
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+async function requestOpenAICompatibleCompletion(
+  messages: Array<{ role: string; content: string }>,
+  opts: { url: string; apiKey: string; model: string; providerLabel: string; extraHeaders?: Record<string, string> },
+): Promise<string> {
+  const response = await fetch(opts.url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${openRouterKey}`,
+      Authorization: `Bearer ${opts.apiKey}`,
       "Content-Type": "application/json",
       Accept: "application/json",
-      "HTTP-Referer": "https://hypersys.lovable.app",
-      "X-Title": "HyperSYS AI",
+      ...(opts.extraHeaders ?? {}),
     },
     body: JSON.stringify({
-      model,
+      model: opts.model,
       messages,
       stream: false,
       temperature: 0.45,
       top_p: 0.9,
       max_tokens: 1200,
-      ...(selectedModel === "thinker" ? { reasoning: { effort: "high" } } : {}),
     }),
   });
 
   const raw = await response.text();
-
   if (!response.ok || isHtmlChallenge(raw)) {
-    throw new Error(raw || `OpenRouter API error: ${response.status}`);
+    throw new Error(raw || `${opts.providerLabel} API error: ${response.status}`);
   }
 
   const parsed = JSON.parse(raw);
   const text = extractTextFromOpenAIResponse(parsed);
-  if (!text) throw new Error("Empty OpenRouter response");
+  if (!text) throw new Error(`Empty ${opts.providerLabel} response`);
   return text;
 }
 
-async function requestGeminiVisionCompletion(prompt: string, images: Array<{ dataUrl?: string; mimeType?: string; name?: string }>): Promise<string> {
-  const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not configured");
-
-  const parts: Array<Record<string, unknown>> = [{ text: prompt }];
-
-  for (const image of images) {
-    if (!image?.dataUrl) continue;
-    const parsed = parseDataUrl(image.dataUrl);
-    if (!parsed) continue;
-
-    parts.push({
-      inlineData: {
-        mimeType: image.mimeType || parsed.mimeType,
-        data: parsed.data,
-      },
-    });
-  }
-
-  if (parts.length === 1) {
-    throw new Error("No valid images provided");
-  }
-
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts }],
-      generationConfig: {
-        temperature: 0.4,
-      },
-    }),
-  });
-
-  const raw = await response.text();
-  if (!response.ok) {
-    throw new Error(raw || `Gemini API error: ${response.status}`);
-  }
-
-  const parsed = JSON.parse(raw);
-  const text = parsed?.candidates?.[0]?.content?.parts
-    ?.map((part: { text?: string }) => part?.text || "")
-    .join("\n")
-    .trim();
-
-  if (!text) throw new Error("Empty Gemini response");
-  return text;
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
