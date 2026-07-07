@@ -20,11 +20,7 @@ export const AI_MODELS: AIModel[] = [
   { id: 'nv-deepseek', name: 'DeepSeek V4 Pro', label: 'NV · DeepSeek', description: 'NVIDIA · deepseek-v4-pro', emoji: '🧠', featured: true },
   { id: 'nv-kimi', name: 'Kimi K2.6', label: 'NV · Kimi', description: 'NVIDIA · moonshot kimi-k2.6', emoji: '🌙', featured: true },
   { id: 'nv-minimax', name: 'MiniMax M2.7', label: 'NV · MiniMax', description: 'NVIDIA · minimax-m2.7', emoji: '⚡', featured: true },
-  { id: 'ar-gpt55', name: 'GPT-5.5', label: 'AR · GPT', description: 'AgentRouter · gpt-5.5', emoji: '🚀' },
-  { id: 'ar-opus-8', name: 'Claude Opus 4.8', label: 'AR · Opus 4.8', description: 'AgentRouter · claude-opus-4-8', emoji: '🎼' },
-  { id: 'ar-opus-7', name: 'Claude Opus 4.7', label: 'AR · Opus 4.7', description: 'AgentRouter · claude-opus-4-7', emoji: '🎻' },
-  { id: 'ar-opus-6', name: 'Claude Opus 4.6', label: 'AR · Opus 4.6', description: 'AgentRouter · claude-opus-4-6', emoji: '🎹' },
-  { id: 'ar-glm', name: 'GLM 5.2', label: 'AR · GLM', description: 'AgentRouter · glm-5.2', emoji: '💎' },
+];
 ];
 
 
