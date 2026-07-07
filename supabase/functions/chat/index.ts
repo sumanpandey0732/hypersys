@@ -181,100 +181,21 @@ When web results are provided, integrate them naturally and cite sources casuall
 
 Remember: You're the world's most lovable, funny, smart, and genuine friend that everyone wishes they had! 🔥`;
 
-// OpenRouter model mapping
-const OPENROUTER_MODELS: Record<string, string> = {
-  coder: "qwen/qwen3-coder:free",
-  thinker: "deepseek/deepseek-r1:free",
-  overall: "deepseek/deepseek-v3.2",
-  casual: "qwen/qwen3-next-80b-a3b-instruct:free",
-  "router-free": "openrouter/free",
-  study: "meta-llama/llama-3.3-70b-instruct:free",
-  "glm-air": "z-ai/glm-4.5-air:free",
-  minimax: "minimax/minimax-m2.5:free",
-  nemotron: "nvidia/nemotron-3-super-120b-a12b:free",
-  "trinity-mini": "arcee-ai/trinity-mini:free",
+// NVIDIA models (via integrate.api.nvidia.com, OpenAI-compatible)
+const NVIDIA_MODELS: Record<string, string> = {
+  "nv-glm": "z-ai/glm-5.2",
+  "nv-deepseek": "deepseek-ai/deepseek-v4-pro",
+  "nv-kimi": "moonshotai/kimi-k2.6",
+  "nv-minimax": "minimaxai/minimax-m2.7",
 };
 
-// Custom identity instructions per model (appended to system prompt)
-const MODEL_IDENTITY_INSTRUCTIONS: Record<string, string> = {
-  coder: `\n\n## YOUR IDENTITY: OPUS 4.6 — THE CODE MASTER 💻
-You are HyperSYS Coder, an elite coding specialist powered for clean engineering. Your personality:
-- You LIVE and BREATHE code. Every problem is a coding challenge to you.
-- When someone asks a question, think about it from a developer's perspective first.
-- Use code examples, snippets, and technical explanations naturally.
-- You're confident, precise, and slightly nerdy — like the best senior dev friend.
-- Format code beautifully with proper syntax highlighting.
-- Suggest best practices, optimizations, and clean architecture.
-- You still maintain the friendly, witty tone but with a heavy tech flavor.
-- Sign off coding answers with subtle dev humor.`,
-
-  thinker: `\n\n## YOUR IDENTITY: R1-0528 — THE DEEP THINKER 🧠
-You are R1-0528, a deep reasoning and analytical powerhouse. Your personality:
-- You approach EVERY question with profound depth and multi-layered analysis.
-- Break down complex problems into clear logical steps.
-- Consider multiple perspectives before giving your answer.
-- You love philosophical discussions, strategy, and intellectual challenges.
-- Use structured thinking: premises → analysis → conclusion.
-- You're calm, wise, and methodical — like a brilliant professor who's also cool.
-- Ask thought-provoking follow-up questions when appropriate.
-- Your tone is thoughtful and measured, but never boring.`,
-
-  overall: `\n\n## YOUR IDENTITY: V3.2 — THE ALL-ROUNDER 🌟
-You are V3.2, the ultimate versatile AI companion. Your personality:
-- You excel at EVERYTHING — coding, writing, analysis, creativity, conversation.
-- Adapt your style perfectly to whatever the user needs.
-- You're the Swiss Army knife of AI — always have the right tool for the job.
-- Balance depth with brevity — know when to go deep and when to keep it short.
-- You're confident but humble, knowledgeable but approachable.
-- Great at summarizing, explaining, and connecting dots across domains.
-- Your superpower is versatility — you make everything look effortless.`,
-
-  casual: `\n\n## YOUR IDENTITY: GLM 4.6 — THE CHILL FRIEND 😎
-You are HyperSYS Casual, the most relaxed and fun AI to chat with. Your personality:
-- You're the ULTIMATE chill friend — laid back, funny, and easygoing.
-- Keep responses short, punchy, and entertaining.
-- Use slang, memes references, and casual language naturally.
-- You're great for casual convos, random questions, and just vibing.
-- Don't overthink things — keep it light and fun.
-- Master of one-liners, comebacks, and making people smile.
-- You're the friend everyone wants to text at 2 AM for random conversations.
-- Emojis are your love language 😂🔥💯`,
-
-  "router-free": `\n\n## YOUR IDENTITY: FREE AUTO ROUTER 🧭
-You are a reliable general-purpose model chooser.
-- Stay balanced, accurate, and polished.
-- Prioritize clarity over fluff.
-- Format answers into neat sections with strong headings and clean bullet spacing.`,
-
-  study: `\n\n## YOUR IDENTITY: STUDY MENTOR 📚
-You explain concepts like a top tutor.
-- Teach step by step.
-- Use examples, memory tricks, and mini summaries.
-- End with a short recap when the topic is complex.`,
-
-  "glm-air": `\n\n## YOUR IDENTITY: SUMMARY ENGINE 📝
-You are excellent at distilling information.
-- Organize content into crisp sections.
-- Use bullets, tables, and key takeaways.
-- Remove noise and keep the best signal.`,
-
-  minimax: `\n\n## YOUR IDENTITY: FAST RESPONSE ENGINE ⚡
-You answer quickly without becoming shallow.
-- Keep outputs concise but useful.
-- Prefer sharp bullets and direct recommendations.
-- Avoid rambling.`,
-
-  nemotron: `\n\n## YOUR IDENTITY: LONG-CONTEXT STRATEGIST 🧩
-You excel at large context and multi-part reasoning.
-- Synthesize long inputs into coherent structure.
-- Surface tradeoffs, dependencies, and edge cases.
-- Use sections, tables, and decision-ready conclusions.`,
-
-  "trinity-mini": `\n\n## YOUR IDENTITY: MINI POWERHOUSE 🚀
-You are fast, focused, and surprisingly capable.
-- Give compact, structured answers.
-- Prioritize action items and next steps.
-- Keep tone energetic and smart.`,
+// AgentRouter models (via agentrouter.org, OpenAI-compatible)
+const AGENTROUTER_MODELS: Record<string, string> = {
+  "ar-glm": "glm-5.2",
+  "ar-opus-8": "claude-opus-4-8",
+  "ar-opus-6": "claude-opus-4-6",
+  "ar-opus-7": "claude-opus-4-7",
+  "ar-gpt55": "gpt-5.5",
 };
 
 const OUTPUT_POLISH_INSTRUCTIONS = `\n\n## OUTPUT POLISH (MANDATORY)
@@ -283,6 +204,7 @@ const OUTPUT_POLISH_INSTRUCTIONS = `\n\n## OUTPUT POLISH (MANDATORY)
 - Use clear headings, blank lines, and polished bullet lists.
 - If sharing code, explain it briefly before or after the snippet.
 - If the answer is long, end with a short takeaway section.`;
+
 
 function isLikelyImageRequest(query: string): boolean {
   return IMAGE_REQUEST_PATTERN.test(query);
@@ -350,13 +272,8 @@ async function performWebSearch(query: string): Promise<{ context: string; sourc
   }
 }
 
-function buildSystemPrompt(languageHint: string, searchData: { context: string; sources: string[] } | null, selectedModel?: string): string {
+function buildSystemPrompt(languageHint: string, searchData: { context: string; sources: string[] } | null): string {
   let prompt = `${BASE_SYSTEM_PROMPT}\n\nDetected user language hint: ${languageHint}.`;
-
-  // Add model-specific identity instructions (only for AgentRouter models, not default)
-  if (selectedModel && MODEL_IDENTITY_INSTRUCTIONS[selectedModel]) {
-    prompt += MODEL_IDENTITY_INSTRUCTIONS[selectedModel];
-  }
 
   prompt += OUTPUT_POLISH_INSTRUCTIONS;
 
@@ -369,6 +286,7 @@ function buildSystemPrompt(languageHint: string, searchData: { context: string; 
 
   return prompt;
 }
+
 
 function extractTextFromContent(content: unknown): string {
   if (typeof content === "string") return content;
@@ -462,95 +380,39 @@ async function requestMistralCompletion(messages: Array<{ role: string; content:
   return text;
 }
 
-async function requestOpenRouterCompletion(messages: Array<{ role: string; content: string }>, selectedModel: string): Promise<string> {
-  const openRouterKey = Deno.env.get("API_KEY");
-  if (!openRouterKey) throw new Error("API_KEY is not configured");
-
-  const model = OPENROUTER_MODELS[selectedModel];
-  if (!model) throw new Error(`Unknown OpenRouter model: ${selectedModel}`);
-
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+async function requestOpenAICompatibleCompletion(
+  messages: Array<{ role: string; content: string }>,
+  opts: { url: string; apiKey: string; model: string; providerLabel: string; extraHeaders?: Record<string, string> },
+): Promise<string> {
+  const response = await fetch(opts.url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${openRouterKey}`,
+      Authorization: `Bearer ${opts.apiKey}`,
       "Content-Type": "application/json",
       Accept: "application/json",
-      "HTTP-Referer": "https://hypersys.lovable.app",
-      "X-Title": "HyperSYS AI",
+      ...(opts.extraHeaders ?? {}),
     },
     body: JSON.stringify({
-      model,
+      model: opts.model,
       messages,
       stream: false,
       temperature: 0.45,
       top_p: 0.9,
       max_tokens: 1200,
-      ...(selectedModel === "thinker" ? { reasoning: { effort: "high" } } : {}),
     }),
   });
 
   const raw = await response.text();
-
   if (!response.ok || isHtmlChallenge(raw)) {
-    throw new Error(raw || `OpenRouter API error: ${response.status}`);
+    throw new Error(raw || `${opts.providerLabel} API error: ${response.status}`);
   }
 
   const parsed = JSON.parse(raw);
   const text = extractTextFromOpenAIResponse(parsed);
-  if (!text) throw new Error("Empty OpenRouter response");
+  if (!text) throw new Error(`Empty ${opts.providerLabel} response`);
   return text;
 }
 
-async function requestGeminiVisionCompletion(prompt: string, images: Array<{ dataUrl?: string; mimeType?: string; name?: string }>): Promise<string> {
-  const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not configured");
-
-  const parts: Array<Record<string, unknown>> = [{ text: prompt }];
-
-  for (const image of images) {
-    if (!image?.dataUrl) continue;
-    const parsed = parseDataUrl(image.dataUrl);
-    if (!parsed) continue;
-
-    parts.push({
-      inlineData: {
-        mimeType: image.mimeType || parsed.mimeType,
-        data: parsed.data,
-      },
-    });
-  }
-
-  if (parts.length === 1) {
-    throw new Error("No valid images provided");
-  }
-
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts }],
-      generationConfig: {
-        temperature: 0.4,
-      },
-    }),
-  });
-
-  const raw = await response.text();
-  if (!response.ok) {
-    throw new Error(raw || `Gemini API error: ${response.status}`);
-  }
-
-  const parsed = JSON.parse(raw);
-  const text = parsed?.candidates?.[0]?.content?.parts
-    ?.map((part: { text?: string }) => part?.text || "")
-    .join("\n")
-    .trim();
-
-  if (!text) throw new Error("Empty Gemini response");
-  return text;
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -607,7 +469,7 @@ serve(async (req) => {
 
     const userText = typeof lastUserMessage === "string" ? lastUserMessage : "";
     const searchData = needsWebSearch(userText) ? await performWebSearch(userText) : null;
-    const systemPrompt = buildSystemPrompt(detectLanguageHint(userText), searchData, selectedModel);
+    const systemPrompt = buildSystemPrompt(detectLanguageHint(userText), searchData);
 
     const formattedMessages = [
       { role: "system", content: systemPrompt },
@@ -618,26 +480,46 @@ serve(async (req) => {
     ];
 
     if (incomingImages.length > 0) {
-      const visionPrompt = `${userText || "Analyze the uploaded content."}\n\nReturn a clean structured answer with:\n\n## Summary\n\n## Key details\n\n## Important text/items\n\n## Helpful next step`;
-      const visionText = await requestGeminiVisionCompletion(visionPrompt, incomingImages);
-      return createSSETextResponse(visionText);
+      // Image inputs not supported after Gemini removal; fall through to text-only.
+      console.warn("Image inputs received but vision provider is disabled; ignoring images.");
     }
 
-    const openRouterModel = OPENROUTER_MODELS[selectedModel];
+    const nvidiaModel = NVIDIA_MODELS[selectedModel];
+    const agentRouterModel = AGENTROUTER_MODELS[selectedModel];
 
-    if (openRouterModel) {
-      try {
-        const openRouterText = await requestOpenRouterCompletion(formattedMessages, selectedModel);
-        return createSSETextResponse(openRouterText);
-      } catch (openRouterError) {
-        console.error("OpenRouter fallback triggered:", openRouterError);
-        const fallbackText = await requestMistralCompletion(formattedMessages);
-        return createSSETextResponse(fallbackText);
+    try {
+      if (nvidiaModel) {
+        const nvKey = Deno.env.get("NVIDIA_API_KEY");
+        if (!nvKey) throw new Error("NVIDIA_API_KEY is not configured");
+        const text = await requestOpenAICompatibleCompletion(formattedMessages, {
+          url: "https://integrate.api.nvidia.com/v1/chat/completions",
+          apiKey: nvKey,
+          model: nvidiaModel,
+          providerLabel: "NVIDIA",
+        });
+        return createSSETextResponse(text);
       }
+
+      if (agentRouterModel) {
+        const arKey = Deno.env.get("AGENTROUTER_API_KEY");
+        if (!arKey) throw new Error("AGENTROUTER_API_KEY is not configured");
+        const text = await requestOpenAICompatibleCompletion(formattedMessages, {
+          url: "https://agentrouter.org/v1/chat/completions",
+          apiKey: arKey,
+          model: agentRouterModel,
+          providerLabel: "AgentRouter",
+        });
+        return createSSETextResponse(text);
+      }
+    } catch (providerError) {
+      console.error("Provider fallback triggered:", providerError);
+      const fallbackText = await requestMistralCompletion(formattedMessages);
+      return createSSETextResponse(fallbackText);
     }
 
     const mistralText = await requestMistralCompletion(formattedMessages);
     return createSSETextResponse(mistralText);
+
   } catch (error) {
     console.error("Chat function error:", error);
     return new Response(
