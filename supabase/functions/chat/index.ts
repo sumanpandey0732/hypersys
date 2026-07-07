@@ -189,14 +189,8 @@ const NVIDIA_MODELS: Record<string, string> = {
   "nv-minimax": "minimaxai/minimax-m2.7",
 };
 
-// AgentRouter models (via agentrouter.org, OpenAI-compatible)
-const AGENTROUTER_MODELS: Record<string, string> = {
-  "ar-glm": "glm-5.2",
-  "ar-opus-8": "claude-opus-4-8",
-  "ar-opus-6": "claude-opus-4-6",
-  "ar-opus-7": "claude-opus-4-7",
-  "ar-gpt55": "gpt-5.5",
-};
+// AgentRouter removed
+
 
 const OUTPUT_POLISH_INSTRUCTIONS = `\n\n## OUTPUT POLISH (MANDATORY)
 - Never return raw JSON, escaped markdown, or messy provider text.
