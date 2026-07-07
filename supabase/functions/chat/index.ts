@@ -496,7 +496,6 @@ serve(async (req) => {
     }
 
     const nvidiaModel = NVIDIA_MODELS[selectedModel];
-    const agentRouterModel = AGENTROUTER_MODELS[selectedModel];
 
     try {
       if (nvidiaModel) {
@@ -507,18 +506,6 @@ serve(async (req) => {
           apiKey: nvKey,
           model: nvidiaModel,
           providerLabel: "NVIDIA",
-        });
-        return createSSETextResponse(text);
-      }
-
-      if (agentRouterModel) {
-        const arKey = Deno.env.get("AGENTROUTER_API_KEY");
-        if (!arKey) throw new Error("AGENTROUTER_API_KEY is not configured");
-        const text = await requestOpenAICompatibleCompletion(formattedMessages, {
-          url: "https://agentrouter.org/v1/chat/completions",
-          apiKey: arKey,
-          model: agentRouterModel,
-          providerLabel: "AgentRouter",
         });
         return createSSETextResponse(text);
       }
