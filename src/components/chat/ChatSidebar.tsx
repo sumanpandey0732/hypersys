@@ -16,17 +16,17 @@ export interface AIModel {
 
 export const AI_MODELS: AIModel[] = [
   { id: 'default', name: 'HyperSYS', label: 'Default', description: 'Mistral flagship persona', emoji: '✨', featured: true },
-  { id: 'coder', name: 'Qwen3 Coder', label: 'Coder', description: 'Elite coding & debugging', emoji: '💻', featured: true },
-  { id: 'thinker', name: 'DeepSeek R1', label: 'Thinker', description: 'Deep reasoning & strategy', emoji: '🧠', featured: true },
-  { id: 'overall', name: 'DeepSeek V3.2', label: 'Overall', description: 'Powerful all-rounder', emoji: '🌟', featured: true },
-  { id: 'casual', name: 'Qwen3 Next', label: 'Casual', description: 'Fast conversational vibe', emoji: '😎', featured: true },
-  { id: 'router-free', name: 'openrouter/free', label: 'Free Auto', description: 'Best available free route', emoji: '🧭' },
-  { id: 'study', name: 'Llama 3.3 70B', label: 'Study', description: 'Homework & explanations', emoji: '📚' },
-  { id: 'glm-air', name: 'GLM 4.5 Air', label: 'Summarizer', description: 'Notes & summaries', emoji: '📝' },
-  { id: 'minimax', name: 'MiniMax M2.5', label: 'Fast', description: 'Lightweight fast answers', emoji: '⚡' },
-  { id: 'nemotron', name: 'Nemotron 3 Super', label: 'Powerful', description: 'Long context & deep work', emoji: '🧩' },
-  { id: 'trinity-mini', name: 'Trinity Mini', label: 'Mini', description: 'Quick small tasks', emoji: '🚀' },
+  { id: 'nv-glm', name: 'GLM 5.2', label: 'NV · GLM', description: 'NVIDIA · z-ai/glm-5.2', emoji: '🧬', featured: true },
+  { id: 'nv-deepseek', name: 'DeepSeek V4 Pro', label: 'NV · DeepSeek', description: 'NVIDIA · deepseek-v4-pro', emoji: '🧠', featured: true },
+  { id: 'nv-kimi', name: 'Kimi K2.6', label: 'NV · Kimi', description: 'NVIDIA · moonshot kimi-k2.6', emoji: '🌙', featured: true },
+  { id: 'nv-minimax', name: 'MiniMax M2.7', label: 'NV · MiniMax', description: 'NVIDIA · minimax-m2.7', emoji: '⚡', featured: true },
+  { id: 'ar-gpt55', name: 'GPT-5.5', label: 'AR · GPT', description: 'AgentRouter · gpt-5.5', emoji: '🚀' },
+  { id: 'ar-opus-8', name: 'Claude Opus 4.8', label: 'AR · Opus 4.8', description: 'AgentRouter · claude-opus-4-8', emoji: '🎼' },
+  { id: 'ar-opus-7', name: 'Claude Opus 4.7', label: 'AR · Opus 4.7', description: 'AgentRouter · claude-opus-4-7', emoji: '🎻' },
+  { id: 'ar-opus-6', name: 'Claude Opus 4.6', label: 'AR · Opus 4.6', description: 'AgentRouter · claude-opus-4-6', emoji: '🎹' },
+  { id: 'ar-glm', name: 'GLM 5.2', label: 'AR · GLM', description: 'AgentRouter · glm-5.2', emoji: '💎' },
 ];
+
 
 interface Conversation {
   id: string;
