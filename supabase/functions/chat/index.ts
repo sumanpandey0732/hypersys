@@ -469,7 +469,7 @@ serve(async (req) => {
 
     const userText = typeof lastUserMessage === "string" ? lastUserMessage : "";
     const searchData = needsWebSearch(userText) ? await performWebSearch(userText) : null;
-    const systemPrompt = buildSystemPrompt(detectLanguageHint(userText), searchData, selectedModel);
+    const systemPrompt = buildSystemPrompt(detectLanguageHint(userText), searchData);
 
     const formattedMessages = [
       { role: "system", content: systemPrompt },
@@ -480,26 +480,46 @@ serve(async (req) => {
     ];
 
     if (incomingImages.length > 0) {
-      const visionPrompt = `${userText || "Analyze the uploaded content."}\n\nReturn a clean structured answer with:\n\n## Summary\n\n## Key details\n\n## Important text/items\n\n## Helpful next step`;
-      const visionText = await requestGeminiVisionCompletion(visionPrompt, incomingImages);
-      return createSSETextResponse(visionText);
+      // Image inputs not supported after Gemini removal; fall through to text-only.
+      console.warn("Image inputs received but vision provider is disabled; ignoring images.");
     }
 
-    const openRouterModel = OPENROUTER_MODELS[selectedModel];
+    const nvidiaModel = NVIDIA_MODELS[selectedModel];
+    const agentRouterModel = AGENTROUTER_MODELS[selectedModel];
 
-    if (openRouterModel) {
-      try {
-        const openRouterText = await requestOpenRouterCompletion(formattedMessages, selectedModel);
-        return createSSETextResponse(openRouterText);
-      } catch (openRouterError) {
-        console.error("OpenRouter fallback triggered:", openRouterError);
-        const fallbackText = await requestMistralCompletion(formattedMessages);
-        return createSSETextResponse(fallbackText);
+    try {
+      if (nvidiaModel) {
+        const nvKey = Deno.env.get("NVIDIA_API_KEY");
+        if (!nvKey) throw new Error("NVIDIA_API_KEY is not configured");
+        const text = await requestOpenAICompatibleCompletion(formattedMessages, {
+          url: "https://integrate.api.nvidia.com/v1/chat/completions",
+          apiKey: nvKey,
+          model: nvidiaModel,
+          providerLabel: "NVIDIA",
+        });
+        return createSSETextResponse(text);
       }
+
+      if (agentRouterModel) {
+        const arKey = Deno.env.get("AGENTROUTER_API_KEY");
+        if (!arKey) throw new Error("AGENTROUTER_API_KEY is not configured");
+        const text = await requestOpenAICompatibleCompletion(formattedMessages, {
+          url: "https://agentrouter.org/v1/chat/completions",
+          apiKey: arKey,
+          model: agentRouterModel,
+          providerLabel: "AgentRouter",
+        });
+        return createSSETextResponse(text);
+      }
+    } catch (providerError) {
+      console.error("Provider fallback triggered:", providerError);
+      const fallbackText = await requestMistralCompletion(formattedMessages);
+      return createSSETextResponse(fallbackText);
     }
 
     const mistralText = await requestMistralCompletion(formattedMessages);
     return createSSETextResponse(mistralText);
+
   } catch (error) {
     console.error("Chat function error:", error);
     return new Response(
