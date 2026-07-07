@@ -395,6 +395,19 @@ export default function Chat() {
               )}
             </div>
           </div>
+
+          <div className="relative flex items-center gap-2 flex-shrink-0">
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="text-xs sm:text-sm bg-secondary/50 hover:bg-secondary/70 border border-border/40 rounded-lg px-2.5 py-1.5 text-foreground/80 focus:outline-none focus:ring-2 focus:ring-primary/40 max-w-[160px] sm:max-w-none"
+              aria-label="Select AI model"
+            >
+              {AI_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.emoji} {m.label}</option>
+              ))}
+            </select>
+          </div>
         </header>
 
         {/* Messages */}
