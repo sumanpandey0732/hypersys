@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import ChatSidebar from '@/components/chat/ChatSidebar';
+import ChatSidebar, { AI_MODELS } from '@/components/chat/ChatSidebar';
 import ChatMessage from '@/components/chat/ChatMessage';
 import ChatInput from '@/components/chat/ChatInput';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
@@ -394,6 +394,19 @@ export default function Chat() {
                 <span className="text-xs text-muted-foreground/60">Guest mode • <a href="/auth" className="text-primary hover:underline">Sign in to save chats</a></span>
               )}
             </div>
+          </div>
+
+          <div className="relative flex items-center gap-2 flex-shrink-0">
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="text-xs sm:text-sm bg-secondary/50 hover:bg-secondary/70 border border-border/40 rounded-lg px-2.5 py-1.5 text-foreground/80 focus:outline-none focus:ring-2 focus:ring-primary/40 max-w-[160px] sm:max-w-none"
+              aria-label="Select AI model"
+            >
+              {AI_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.emoji} {m.label}</option>
+              ))}
+            </select>
           </div>
         </header>
 

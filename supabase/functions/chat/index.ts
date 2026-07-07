@@ -189,14 +189,8 @@ const NVIDIA_MODELS: Record<string, string> = {
   "nv-minimax": "minimaxai/minimax-m2.7",
 };
 
-// AgentRouter models (via agentrouter.org, OpenAI-compatible)
-const AGENTROUTER_MODELS: Record<string, string> = {
-  "ar-glm": "glm-5.2",
-  "ar-opus-8": "claude-opus-4-8",
-  "ar-opus-6": "claude-opus-4-6",
-  "ar-opus-7": "claude-opus-4-7",
-  "ar-gpt55": "gpt-5.5",
-};
+// AgentRouter removed
+
 
 const OUTPUT_POLISH_INSTRUCTIONS = `\n\n## OUTPUT POLISH (MANDATORY)
 - Never return raw JSON, escaped markdown, or messy provider text.
@@ -471,12 +465,29 @@ serve(async (req) => {
     const searchData = needsWebSearch(userText) ? await performWebSearch(userText) : null;
     const systemPrompt = buildSystemPrompt(detectLanguageHint(userText), searchData);
 
+    const sanitized = incomingMessages
+      .map((msg: { role?: string; content?: unknown }) => ({
+        role: msg?.role === "assistant" ? "assistant" : "user",
+        content: (typeof msg?.content === "string" ? msg.content : extractTextFromContent(msg?.content)).trim(),
+      }))
+      // Drop empty assistant messages — providers reject them (code 3240)
+      .filter((m: { role: string; content: string }) => !(m.role === "assistant" && !m.content));
+
+    // Ensure conversation ends on a user message
+    while (sanitized.length && sanitized[sanitized.length - 1].role !== "user") {
+      sanitized.pop();
+    }
+
+    if (!sanitized.length) {
+      return new Response(
+        JSON.stringify({ error: "No valid user message" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const formattedMessages = [
       { role: "system", content: systemPrompt },
-      ...incomingMessages.map((msg: { role?: string; content?: unknown }) => ({
-        role: msg?.role === "assistant" ? "assistant" : "user",
-        content: typeof msg?.content === "string" ? msg.content : JSON.stringify(msg?.content ?? ""),
-      })),
+      ...sanitized,
     ];
 
     if (incomingImages.length > 0) {
@@ -485,7 +496,6 @@ serve(async (req) => {
     }
 
     const nvidiaModel = NVIDIA_MODELS[selectedModel];
-    const agentRouterModel = AGENTROUTER_MODELS[selectedModel];
 
     try {
       if (nvidiaModel) {
@@ -496,18 +506,6 @@ serve(async (req) => {
           apiKey: nvKey,
           model: nvidiaModel,
           providerLabel: "NVIDIA",
-        });
-        return createSSETextResponse(text);
-      }
-
-      if (agentRouterModel) {
-        const arKey = Deno.env.get("AGENTROUTER_API_KEY");
-        if (!arKey) throw new Error("AGENTROUTER_API_KEY is not configured");
-        const text = await requestOpenAICompatibleCompletion(formattedMessages, {
-          url: "https://agentrouter.org/v1/chat/completions",
-          apiKey: arKey,
-          model: agentRouterModel,
-          providerLabel: "AgentRouter",
         });
         return createSSETextResponse(text);
       }
