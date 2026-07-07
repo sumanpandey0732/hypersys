@@ -21,7 +21,6 @@ export const AI_MODELS: AIModel[] = [
   { id: 'nv-kimi', name: 'Kimi K2.6', label: 'NV · Kimi', description: 'NVIDIA · moonshot kimi-k2.6', emoji: '🌙', featured: true },
   { id: 'nv-minimax', name: 'MiniMax M2.7', label: 'NV · MiniMax', description: 'NVIDIA · minimax-m2.7', emoji: '⚡', featured: true },
 ];
-];
 
 
 interface Conversation {
